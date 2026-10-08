@@ -1,0 +1,62 @@
+
+# ==========================================
+# CSAPP Labs - .gitignore
+# ==========================================
+
+# C/C++ 编译中间产物
+*.o
+*.obj
+*.a
+*.so
+*.so.*
+*.dll
+*.dylib
+*.exe
+*.out
+*.d
+*.gcda
+*.gcno
+*.gcov
+
+# CMake 构建产物
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+compile_commands.json
+
+# Data Lab 编译产物
+btest
+fshow
+ishow
+
+# 其他实验编译产物
+csim
+test-csim
+test-trans
+mdriver
+sdriver
+tsh
+tiny
+proxy
+
+# 调试与临时文件
+core
+core.*
+*.log
+*.tmp
+*.swp
+*.swo
+*~
+.gdb_history
+
+# 编辑器与系统文件
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Python 缓存
+__pycache__/
+*.pyc
+.venv/
