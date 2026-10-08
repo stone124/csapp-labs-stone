@@ -143,6 +143,14 @@ NOTES:
  *   Rating: 1
  */
 int bitXor(int x, int y) {
+  /*转换问题：找到x y不同的地方标记为1，例如0 1为1，1 0为1
+  one_same_mark代表x和y同时为1的地方标记为1，
+  zero_same_mark代表x和y同时为0的地方标记为1，
+  one_same_mark取反代表x和y同时为0 或者 不同的地方 标记为1，
+  zero_same_mark取反代表x和y同时为1 或者 不同的地方 标记为1，
+  ~one_same_mark & ~zero_same_mark代表不同的地方，就是解答的问题
+  */
+
   int one_same_mark = x & y;
   int zero_same_mark = ~x & ~y;
   return ~one_same_mark & ~zero_same_mark;
@@ -154,9 +162,10 @@ int bitXor(int x, int y) {
  *   Rating: 1
  */
 int tmin(void) {
-  
-  return 2;
+  /*转换问题：最高位为1，其他位为0*/
+  int number = 1;
 
+  return number << 31;
 }
 //2
 /*
@@ -167,7 +176,22 @@ int tmin(void) {
  *   Rating: 1
  */
 int isTmax(int x) {
-  return 2;
+  /*问题转换：当0x7fffffff的时候返回1，否则返回0，意思是我需要一个位运算，与输入作用得到0x00000000、0x00000001
+  每一位的值都限定死了，需要运算直接判断每一位的值，例如&可以是1&1才能为1，如果就采取这个&，光移位就会有32次。不可行
+
+  0xefffffff难以处理，取反之后为 0x80000000，只有最高位为1，更加方便处理，左移一位就会变为0，能满足这些要求的只有0x7fffffff和0xffffffff,
+  与0x80000000取&就可以直接判断出最高位是0和1，然后就需要排除其他最高位为0的数，0x7fffffff和0xffffffff还有个共同特征（其他最高位为0所不具有的），x + 1 与 ~x 相同。
+  总之，两个条件x + 1 与 ~x 相同，然后最高位为0，这两个的直接结果都是0，取反取&即可
+
+  没有移位操作，难以判断最高位为0，于是单独排除-1（0xffffffff）,它的特征就是取反为0
+
+  tip: 0x00000000可以通过逻辑运算！变为1
+  */
+  int not = ~x;
+  int xplus = x + 1;
+  int condition1_equal = !(not ^ xplus);
+
+  return condition1_equal & !!not;
 }
 /* 
  * allOddBits - return（返回） 1 if all odd-numbered（编号为奇数的） bits（位） in word（字） are set to 1
