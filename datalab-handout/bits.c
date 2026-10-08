@@ -183,9 +183,10 @@ int isTmax(int x) {
   与0x80000000取&就可以直接判断出最高位是0和1，然后就需要排除其他最高位为0的数，0x7fffffff和0xffffffff还有个共同特征（其他最高位为0所不具有的），x + 1 与 ~x 相同。
   总之，两个条件x + 1 与 ~x 相同，然后最高位为0，这两个的直接结果都是0，取反取&即可
 
-  没有移位操作，难以判断最高位为0，于是单独排除-1（0xffffffff）,它的特征就是取反为0
+  没有移位操作，难以判断最高位为0，于是单独排除-1（0xffffffff）,它的特征就是取反为0，通过两个!转换为1
 
-  tip: 0x00000000可以通过逻辑运算！变为1
+  tip: 0x00000000可以通过逻辑运算！变为1，非零值（包含负数），可变换为0
+  tip：相等可以用异或^判断
   */
   int not = ~x;
   int xplus = x + 1;
@@ -202,7 +203,18 @@ int isTmax(int x) {
  *   Rating: 2
  */
 int allOddBits(int x) {
-  return 2;
+  /*首先构造所有奇数位是1的数作为掩码，用x&掩码，如果说x所有odd位都是1的话，
+  假设结果为result_mask，则result_mask与odd_pos_mask_32是一致的，
+  可以用^异或判断相等*/
+  int odd_pos_mask_2 = 2; 
+  int odd_pos_mask_4 = (odd_pos_mask_2 << 2) + odd_pos_mask_2;
+  int odd_pos_mask_8 = (odd_pos_mask_4 << 4) + odd_pos_mask_4;
+  int odd_pos_mask_16 = (odd_pos_mask_8 << 8) + odd_pos_mask_8;
+  int odd_pos_mask_32 = (odd_pos_mask_16 << 16) + odd_pos_mask_16;
+
+  int result_mask = odd_pos_mask_32 & x;
+  int equal = !(result_mask^odd_pos_mask_32);
+  return equal;
 }
 /* 
  * negate - return（返回） -x
