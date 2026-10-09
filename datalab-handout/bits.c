@@ -224,7 +224,8 @@ int allOddBits(int x) {
  *   Rating: 2
  */
 int negate(int x) {
-  return 2;
+  /*首先观察-x与x的关系，x取反+1，要问咋来的，正数补码是本身，负数补码是取反+1*/
+  return (~x)+1;
 }
 //3
 /* 
@@ -237,7 +238,32 @@ int negate(int x) {
  *   Rating: 3
  */
 int isAsciiDigit(int x) {
-  return 2;
+  /*思路1：
+  可以用上个方法的取负方法，将0x30的负值和0x39负值分别与x相加，如果说0x39负值与x的结果小于等于0，
+  0x30的负值与x的结果大于等于0，则可以认为是 1。
+
+  但是等于0就有点碍眼了，于是可以计算0x39负值与x-1(小于0)，然后0x30负值与x+1(大于0)*/
+  // int negative_0x30 = (~0x30)+1;
+  // int negative_0x39 = (~0x39)+1;
+  // int negative_1 = (~1)+1;
+  // int result_0x30 = negative_0x30 + x + 1;
+  // int result_0x39 = negative_0x39 + x + negative_1;
+  // return !!result_0x30 & !!result_0x39;
+  // 0x80000000出现超限，不可行
+
+  /*思路2：
+  0x30和0x39他们的高位部分是相同的，然后低位需要在0-9之间。
+
+  首先，右边移4位看是否与3相等
+  然后，取出低位部分，与0-9做差，也就是负值相+，观察符号位
+  */
+  int x_high_pos = x >> 4;
+  int high_pos_equal = !(x_high_pos ^ 3);
+  int low_pos_mask = 0x0000000f;
+  int x_low_pos = low_pos_mask&x;
+  int is_low_pos = (x_low_pos+ ~1 + ~9+2) >>31;
+
+  return high_pos_equal & is_low_pos;
 }
 /* 
  * conditional - same as（等价于） x ? y : z
@@ -247,7 +273,15 @@ int isAsciiDigit(int x) {
  *   Rating: 3
  */
 int conditional(int x, int y, int z) {
-  return 2;
+  /*判断x的值非0，然后如果非0选择y，如果说为0选择z。
+  也就是用一个0 1值去与y z做运算，可以让y z分别去与掩码进行运算，
+  掩码0xffffffff和0x0的值就差1，刚好适合这个0 1值进行运算*/
+  int is_x_0 = !x;
+  int mask = 0;
+  int z_mask = mask + ~is_x_0 + 1;
+  int y_mask = mask + is_x_0 + ~1 + 1;
+
+  return (y&y_mask) + (z&z_mask);
 }
 /* 
  * isLessOrEqual - if x <= y then return（返回） 1, else（否则） return 0
@@ -257,7 +291,27 @@ int conditional(int x, int y, int z) {
  *   Rating: 3
  */
 int isLessOrEqual(int x, int y) {
-  return 2;
+  /*需要判断x <= y
+  还是通过x的相反数进行加y，但是x也只是为负数的话，这样转换并不是对应的正数，只有正数转换为负数才是。
+  即使只看大小关系，正数和负数之间也难以计算。
+  可以分为三种情况，1 负数和正数 2 正数和正数 3 负数与负数 4 正数与负数
+  简单来说就是 符号相同时，比较差值，符号不同时，直接比较符号。
+  符号相同时，如何比较差值呢，就通过掩码把除符号位的位保留，然后做差，比大小（用符号位判断）
+  
+  tip: 求差后，符号位0 1，可判断大于等于情况，求差后!，可判断相等情况*/
+  int sign_x = x >> 31;
+  int sign_y = y >> 31;
+  int diff_sign = sign_y + ~sign_x + 1;
+  int same_sign_or_x_negative = diff_sign >> 31; // y_sign >= x_sign，为0
+  int same_sign = !diff_sign; // x和y的符号位相同时，为1
+
+  int value_mask = ~(1 << 31);
+  int value_x = value_mask & x;
+  int value_y = value_mask & y;
+  int diff_value = value_y + ~value_x + 1;
+  int sign_diff_value = (diff_value >> 31); // 符号位为0，即为x_value <= y_value
+
+  return (!same_sign_or_x_negative & !same_sign) | (same_sign & !sign_diff_value); // 用|所有返回1的情况：1 y为正数、x为负数 2 y和x符号相同，但是x_value <= y_value
 }
 //4
 /* 
