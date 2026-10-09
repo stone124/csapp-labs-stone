@@ -275,7 +275,9 @@ int isAsciiDigit(int x) {
 int conditional(int x, int y, int z) {
   /*判断x的值非0，然后如果非0选择y，如果说为0选择z。
   也就是用一个0 1值去与y z做运算，可以让y z分别去与掩码进行运算，
-  掩码0xffffffff和0x0的值就差1，刚好适合这个0 1值进行运算*/
+  掩码0xffffffff和0x0的值就差1，刚好适合这个0 1值进行运算
+  
+  tip：掩码0xffffffff和0x0的值就差1*/
   int is_x_0 = !x;
   int mask = 0;
   int z_mask = mask + ~is_x_0 + 1;
@@ -323,7 +325,20 @@ int isLessOrEqual(int x, int y) {
  *   Rating: 4 
  */
 int logicalNeg(int x) {
-  return 2;
+  /*需要找0x00000000特有的性质，脑中自然想到 就是经过掩码0xffffffff，没有一个1位，逐位检查没有1有点复杂。还有就是取反+1为本身。
+  给的ops有+，这里直接尝试取反+1为本身，假设取反+1的结果是x_mask，那么x_mask - x的符号位能判断 x_mask >= x，那么做一次
+  x- x_mask的符号位就能判断 x >= x_mask，就能判断相等关系，然后转换相反数操作只能使用在 正数和0，可以先判断符号位是否为1，为1的可以直接排除
+
+  在实践的过程中，超符号个数了，可以判断相反数和原本值符号位是否都为0
+
+  总之同时满足两个条件 x_mask符号位为0，x符号位为0
+  tip：int原本为负数，补位后最高位依然是1
+  */
+  int sign = (~x >> 31)&1; // 需要判断符号位为0，保留原值0不方便判断，这里取反变换为1
+  int mask_x = ~x+1;
+  int sign_mask = (~mask_x >> 31)&1;
+
+  return sign & sign_mask;// 如果都是0，!sign & !sign_mask，消除不了!
 }
 /* howManyBits - return（返回） the minimum（最少） number of bits（位） required to represent（表示） x in
  *             two's complement（二进制补码）
@@ -338,7 +353,34 @@ int logicalNeg(int x) {
  *  Rating: 4
  */
 int howManyBits(int x) {
-  return 0;
+  /*可以分为两个部分，首先负权重位（最高位）必须要存在，正数需要多少位很好理解，但是负数有点难以理解，为什么howManyBits(-1) = 1，
+  因为只需要一个负权重位就能表现出来。看 n 位补码的范围就能说明：它能表示 -2^(n-1) 到 2^(n-1)-1，当n变小时，能表达的范围也在变小，
+  对负数 x，要能用 n 位表示，条件是：x ≥ -2^(n-1)两边变形后就是：-x - 1 ≤ 2^(n-1) - 1，右边正是 n 位补码能表示的最大正数。
+  因此，x 能用 n 位表示，当且仅当正数 -x-1 也能用 n 位表示，两者是等价的，而且~x与-x-1是等值的。以8位为例，即使是11111111，变换为00000000，
+  都是只需要一位。
+  
+  于是，只需要理清楚正值和0所需要的位数就可以了，正值和0的判断规则一致，首先负权重位（最高位），然后就是后续第一个1所在位数，加起来就可以了。
+  如何为1的最高位，可采用二分法，先右移16位，看前16位有没有1，通过11111111和00000000(他两就差1)，来决定下次位移哪一半
+  tip：二选一判断产出0 1，通过11111111和00000000（差值为1），通过0 1构造掩码可以进行二选一操作*/
+  int negative_x = ~x;
+  int sign = !(x >> 31);
+  int mask_zero = ~0; // 11111111,mask就是它加上1
+  int real_x = (negative_x&(mask_zero+sign)) + (x&(mask_zero+!sign));// （1）负数符号位为1，使用negative_x （2）正数符号位为0，使用x
+  int count = 0;
+  int check_range16 =  !(real_x >> 16); //（1）前16位为非0，值为0（2）前16为0，值为1
+  int count2 = count + (16&(check_range16 + mask_zero));
+  int check_range8 =!(real_x >> (count2 + 8));
+  int count3 = count2 + (8&(check_range8 + mask_zero));
+  int check_range4 = !(real_x >> (count3 + 4));
+  int count4 = count3 + (4&(check_range4 + mask_zero));
+  int check_range2 = !(real_x >> (count4 + 2));
+  int count5 = count4 + (2&(check_range2 + mask_zero));
+  int check_range1 = !(real_x >> (count5 + 1));
+  int count6 = count5 + (1&(check_range1 + mask_zero));
+  int check_range0 = !(real_x >> (count6 + 0));
+  int count7 = count6 + (1&(check_range0 + mask_zero));
+
+  return count7 + 1;
 }
 //float
 /* 
