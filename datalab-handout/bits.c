@@ -455,7 +455,52 @@ unsigned floatScale2(unsigned uf) {
  *   Rating: 4
  */
 int floatFloat2Int(unsigned uf) {
-  return 2;
+  /*
+  返回值的位表示应与 C 语言执行 (int) f 得到的整数相同，c语言执行的(int) f会直接舍弃小数位，例如(int) 3.9 得 3。
+  可以把e f部分提取出来，对f进行移位操作，保留小数点左边的内容。
+  
+  这里的非规范和规范要分开讨论，通过判断e的值。
+  对于非规范，为2^(1-bias)*0.f，bias为127，这里必然小于1，自然为0。
+  对于规范，为2^(e-bias)*1.f，e - bais大于等于0才有意义，才会是从1打头，再进行移位，如果说移位大于等于31，把符号位都覆盖了，那就是超限了。
+
+  特殊值很明确
+  按题目要求 Anything out of range (including NaN and infinity) should return 0x80000000u
+  首先判断e部分，如果全是1那么就是NaN或者infinity，要判断就要提取e，通过移位操作轻松提取。
+  其他情况直接提取各自
+   */
+  int s = uf >> 31;
+  unsigned e = uf << 1 >> 24;
+  unsigned e_all_1 = 0xff;
+  unsigned e_all_0 = 0;
+  unsigned f = uf << 9 >> 9;
+  unsigned bias = 127;
+  unsigned e_sub_bias = e - bias;
+  int f_new = (1 << 23) + f;
+  int result = 0;
+
+  if(e == e_all_0){ // 包含0和非规范
+    return 0;
+  }
+  if(e == e_all_1){
+    return 0x8 << 28;
+  }
+  if(e < bias){
+    return 0;
+  }
+  if(e_sub_bias < 23){
+    result =  (f_new >> (23 - e_sub_bias));
+  }
+  if(e_sub_bias >= 23 && e_sub_bias < 31){
+    result = (f_new << (e_sub_bias - 23));
+  }
+  if(e_sub_bias >= 31){
+    return 0x8 << 28;
+  }
+  if(s == 1){
+    result = ~result + 1;
+  }
+
+  return result;
 }
 /* 
  * floatPower2 - Return（返回） bit-level equivalent（位级等价结果） of the expression（表达式） 2.0^x
