@@ -384,26 +384,71 @@ int howManyBits(int x) {
 }
 //float
 /* 
- * floatScale2 - Return（返回） bit-level equivalent（位级等价结果） of expression（表达式） 2*f for
- *   floating point（浮点数） argument（参数） f.
- *   Both the argument（参数） and result（结果） are passed as unsigned int's（无符号整数）, but
- *   they are to be interpreted（解释） as the bit-level representation（位级表示） of
- *   single-precision（单精度） floating point（浮点数） values（值）.
- *   When argument（参数） is NaN（非数）, return（返回） argument（参数）
+ * floatScale2 - Return bit-level equivalent of expression 2*f for
+ *   floating point argument f.
+ *   Both the argument and result are passed as unsigned int's, but
+ *   they are to be interpreted as the bit-level representation of
+ *   single-precision floating point values.
+ *   When argument is NaN, return argument
  *   Legal ops: Any integer/unsigned operations incl. ||, &&. also if, while
  *   Max ops: 30
  *   Rating: 4
  */
 unsigned floatScale2(unsigned uf) {
-  return 2;
+  /*给一个float f，返回2f
+  考虑4种类型，
+  （1）0值也就是s 00000000 00...，2*无变化
+  （2）非规格，也就是s 00000000 f，尾数向左移动一位变大，当尾数最高位为1，就
+  需要变为规格的，其中尾数多了个隐含1，所以左移，截断一个1，然后原来的E是1 - bias，0.f
+  原来就是 2^(1-bias)*0.f，2倍后变为了2^(1-bias+1)*0.f,但是规格数来讲最高位是1才行，由
+  前面的要求f的最高位必然是1，然后假设f的截断最高位后，最低位补0为f'，于是对应规格数为
+  2^(1-bias)*1.f'
+  （3）规格，也就是s 00000001-11111110 f，假设阶码部分为e，乘2最直观的反应就是位数左移，但是
+  尾数隐藏了1.f的1，不能直接移动，可以直接加到e上，如果说e超限了达到了11111111，就变为无穷大
+  （4）特殊值，正负无穷和nan，这些都不变
+
+  需要对四种类型进行判断，他们唯一的区别就是e部分的区别，通过移动位置获取对应的e部分
+  */
+  //unsigned float_negative_0 = 1 << 31;
+  unsigned float_positive_0 = 0;
+  unsigned e_all_1 = 0xff;
+  unsigned e = uf << 1 >> 24;
+  unsigned result = 0;
+  unsigned f = uf << 9 >> 9;
+  unsigned f_highest = f >> 22;
+  unsigned s = uf >> 31; // s e f的保存都是从最低为开始算有效，例如s为1的话就是 0 00000000 0000000...1
+  unsigned real_s = s << 31;
+  unsigned new_e = e + 1;
+
+  // if(uf == float_negative_0 || uf == float_positive_0 || e == e_all_1)原本是这样，后续的非规格部分可以处理+-0
+  if(e == e_all_1){
+    result = uf;
+    return result;
+  }
+  // 非规格
+  if(e == float_positive_0){
+    if(f_highest == 0){
+      result = (uf >> 23 << 23) + (f << 1);
+      return result;
+    }
+    result = real_s + (1 << 23) + (f << 10 >> 9);
+    return result;
+  }
+  // 规格
+  if(new_e == e_all_1){
+    result = real_s + (new_e << 23);
+  }
+  result = real_s + ((e + 1) << 23) + f;
+  
+  return result;
 }
 /* 
- * floatFloat2Int - Return（返回） bit-level equivalent（位级等价结果） of expression（表达式） (int) f
- *   for floating point（浮点数） argument（参数） f.
- *   Argument（参数） is passed as unsigned int（无符号整数）, but
- *   it is to be interpreted（解释） as the bit-level representation（位级表示） of a
- *   single-precision（单精度） floating point（浮点数） value（值）.
- *   Anything out of range（超出范围） (including（包括） NaN（非数） and infinity（无穷大）) should return（返回）
+ * floatFloat2Int - Return bit-level equivalent of expression (int) f
+ *   for floating point argument f.
+ *   Argument is passed as unsigned int, but
+ *   it is to be interpreted as the bit-level representation of a
+ *   single-precision floating point value.
+ *   Anything out of range (including NaN and infinity) should return
  *   0x80000000u.
  *   Legal ops: Any integer/unsigned operations incl. ||, &&. also if, while
  *   Max ops: 30
