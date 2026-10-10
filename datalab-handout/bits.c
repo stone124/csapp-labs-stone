@@ -503,18 +503,44 @@ int floatFloat2Int(unsigned uf) {
   return result;
 }
 /* 
- * floatPower2 - Return（返回） bit-level equivalent（位级等价结果） of the expression（表达式） 2.0^x
- *   (2.0 raised to the power（的 x 次幂） x) for any 32-bit integer（32 位整数） x.
+ * floatPower2 - Return bit-level equivalent of the expression 2.0^x
+ *   (2.0 raised to the power x) for any 32-bit integer x.
  *
- *   The unsigned（无符号） value（值） that is returned（返回） should have the identical（相同的） bit
- *   representation（表示） as the single-precision（单精度） floating-point（浮点数） number（数） 2.0^x.
- *   If the result（结果） is too small to be represented（表示） as a denorm（非规格化数）, return（返回）
- *   0. If too large, return +INF（正无穷大）.
+ *   The unsigned value that is returned should have the identical(完全相同的) bit
+ *   representation as the single-precision floating-point number 2.0^x.
+ *   If the result is too small to be represented as a denorm(denormalized number 的简称，中文叫“非规格化数”), return
+ *   0. If too large, return +INF.
  * 
  *   Legal ops: Any integer/unsigned operations incl. ||, &&. Also if, while 
  *   Max ops: 30 
  *   Rating: 4
  */
 unsigned floatPower2(int x) {
-    return 2;
+  /*其实就是看2.0^x的值能不能用32位float表示
+  可以分为三种情况:(1)2.0^x比float下限还低(2)2.0^x在float的范围之内(3)2.0^x比float的上线还高
+  （1）float除0外表达的最小正数，也就是0 00000000 0.....1，也就是0.0...1(23位小数)*2^(-126)，规整一下就是2^(-149)。
+    也就是说x < -149，就直接置为0的表达
+  （3）float表达的最大正整数(也是规整最大)，且能化为2.0^x格式，也就是0 11111111 000...00，也就是1*2^(255 - 127)，规整一下就是2^(128)，2^(129)就不能表达了
+  （2）规整和非规整的表达方式不同，所以需要搞清楚两者的界限，
+  先看非规整最大,0 00000000 1.....1，0.1...1(23位小数)*2^(-126)，最大能代表的数是2^(-127)，
+  再看规整最小，0 00000001 00...，也就是1*2^(-126)，最小能代表的是2^(-126)
+
+  总之，对x的值进行分类讨论就行了
+  */
+  unsigned f = 1;
+  unsigned e = 0;
+  unsigned inf = 0xff << 23;
+
+  if(x < -149){
+    return 0;
+  }
+  if(x < -126){ // >= -149
+    return f << (x + 149);
+  }
+  if(x < 129){ // >= -126
+    e = x + 127;
+    return e << 23;
+  }
+
+  return inf;// x >= 129
 }
