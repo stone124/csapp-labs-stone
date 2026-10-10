@@ -1,4 +1,6 @@
-# LAB 1（datalab）
+# 2026秋季CSAPP实验记录
+
+## Lab 1 — Data Lab: Manipulating Bits
 
 ## 实验结果
 
