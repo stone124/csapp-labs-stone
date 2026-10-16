@@ -483,7 +483,7 @@ Disassembly of section .text:
   40108f:	88 0c 24             	mov    %cl,(%rsp) # %rcx和%ecx和%cl分别是64 32 8位，第一个字符放到栈顶
   401092:	48 8b 14 24          	mov    (%rsp),%rdx # 第一个字符放到%rdx
   401096:	83 e2 0f             	and    $0xf,%edx # %edx(第一个字符)，低4位保留，高4位置为0
-  401099:	0f b6 92 b0 24 40 00 	movzbl 0x4024b0(%rdx),%edx # %edx = 内存(第一个字符低4位 + 0x4024b0)，0x4024b0开始字符串是maduiersnfotvbyl，刚好16位通过后四位选取
+  401099:	0f b6 92 b0 24 40 00 	movzbl 0x4024b0(%rdx),%edx # %edx = 内存(第一个字符低4位 + 0x4024b0)，0x4024b0开始字符串是maduiersnfotvbyl，刚好16位通过低四位选取
   4010a0:	88 54 04 10          	mov    %dl,0x10(%rsp,%rax,1) # %rdx（64 位）→ %edx（低 32 位）→%dl（低 8 位），也就是 %edx的低8位放到内存(%rsp + 16)
   4010a4:	48 83 c0 01          	add    $0x1,%rax # %rax = %rax + 1 = 0 + 1
   4010a8:	48 83 f8 06          	cmp    $0x6,%rax # 与6做比较，前6个字符做循环
@@ -508,88 +508,88 @@ Disassembly of section .text:
   4010f2:	5b                   	pop    %rbx
   4010f3:	c3                   	ret
 
-00000000004010f4 <phase_6>:
+00000000004010f4 <phase_6>: # %rdi是用户输入字符串地址
   4010f4:	41 56                	push   %r14
   4010f6:	41 55                	push   %r13
   4010f8:	41 54                	push   %r12
   4010fa:	55                   	push   %rbp
-  4010fb:	53                   	push   %rbx
-  4010fc:	48 83 ec 50          	sub    $0x50,%rsp
-  401100:	49 89 e5             	mov    %rsp,%r13
-  401103:	48 89 e6             	mov    %rsp,%rsi
-  401106:	e8 51 03 00 00       	call   40145c <read_six_numbers>
-  40110b:	49 89 e6             	mov    %rsp,%r14
-  40110e:	41 bc 00 00 00 00    	mov    $0x0,%r12d
-  401114:	4c 89 ed             	mov    %r13,%rbp
-  401117:	41 8b 45 00          	mov    0x0(%r13),%eax
-  40111b:	83 e8 01             	sub    $0x1,%eax
+  4010fb:	53                   	push   %rbx # 上面5次push保存被调用者保存寄存器的原值
+  4010fc:	48 83 ec 50          	sub    $0x50,%rsp # 栈空间 5*16=80
+  401100:	49 89 e5             	mov    %rsp,%r13 # %r13 = 栈顶指针
+  401103:	48 89 e6             	mov    %rsp,%rsi # %rsi = 栈顶指针
+  401106:	e8 51 03 00 00       	call   40145c <read_six_numbers> # 读6个int，起始偏移为0、4、8、12、16、20，占栈顶+0到+23；成功返回时%eax为6
+  40110b:	49 89 e6             	mov    %rsp,%r14 # %r14 = 栈顶指针
+  40110e:	41 bc 00 00 00 00    	mov    $0x0,%r12d # %r12d = 0
+  401114:	4c 89 ed             	mov    %r13,%rbp # %rbp指向本轮检查的数字，第一轮指向栈顶
+  401117:	41 8b 45 00          	mov    0x0(%r13),%eax # 读取本轮数字；第一轮第一个，第二轮第二个
+  40111b:	83 e8 01             	sub    $0x1,%eax # %eax中的数字副本减1，栈里的原数字不变
   40111e:	83 f8 05             	cmp    $0x5,%eax
-  401121:	76 05                	jbe    401128 <phase_6+0x34>
+  401121:	76 05                	jbe    401128 <phase_6+0x34> # 按无符号比较，数字减1后<=5才跳转，即检查原数字是否在1到6之间
   401123:	e8 12 03 00 00       	call   40143a <explode_bomb>
-  401128:	41 83 c4 01          	add    $0x1,%r12d
-  40112c:	41 83 fc 06          	cmp    $0x6,%r12d
-  401130:	74 21                	je     401153 <phase_6+0x5f>
-  401132:	44 89 e3             	mov    %r12d,%ebx
-  401135:	48 63 c3             	movslq %ebx,%rax
-  401138:	8b 04 84             	mov    (%rsp,%rax,4),%eax
-  40113b:	39 45 00             	cmp    %eax,0x0(%rbp)
-  40113e:	75 05                	jne    401145 <phase_6+0x51>
+  401128:	41 83 c4 01          	add    $0x1,%r12d # %r12d = 0+1
+  40112c:	41 83 fc 06          	cmp    $0x6,%r12d # 明显的循环0递增，与6作比较
+  401130:	74 21                	je     401153 <phase_6+0x5f> # 等于6的时候跳
+  401132:	44 89 e3             	mov    %r12d,%ebx # 只看第一遍，为1，没跳，并且放到%ebx = 1
+  401135:	48 63 c3             	movslq %ebx,%rax # %rax = 1
+  401138:	8b 04 84             	mov    (%rsp,%rax,4),%eax # 栈顶 + 4*%rax，如果是1，就是第二个数嘛
+  40113b:	39 45 00             	cmp    %eax,0x0(%rbp) # 第一个数与第二个数作比较
+  40113e:	75 05                	jne    401145 <phase_6+0x51> # 不相等跳，相等要爆炸
   401140:	e8 f5 02 00 00       	call   40143a <explode_bomb>
-  401145:	83 c3 01             	add    $0x1,%ebx
-  401148:	83 fb 05             	cmp    $0x5,%ebx
-  40114b:	7e e8                	jle    401135 <phase_6+0x41>
-  40114d:	49 83 c5 04          	add    $0x4,%r13
+  401145:	83 c3 01             	add    $0x1,%ebx # %ebx = 2
+  401148:	83 fb 05             	cmp    $0x5,%ebx # 和5比较
+  40114b:	7e e8                	jle    401135 <phase_6+0x41> # 小于等于5跳，是循环，condi就是逐个数比较，都不能相等
+  40114d:	49 83 c5 04          	add    $0x4,%r13 # 移到下一个int，第一轮后指向第二个数
   401151:	eb c1                	jmp    401114 <phase_6+0x20>
-  401153:	48 8d 74 24 18       	lea    0x18(%rsp),%rsi
-  401158:	4c 89 f0             	mov    %r14,%rax
+  401153:	48 8d 74 24 18       	lea    0x18(%rsp),%rsi # %rsi = 栈顶+24，整数数组结束之后的地址
+  401158:	4c 89 f0             	mov    %r14,%rax #%rax = 栈顶
   40115b:	b9 07 00 00 00       	mov    $0x7,%ecx
-  401160:	89 ca                	mov    %ecx,%edx
-  401162:	2b 10                	sub    (%rax),%edx
-  401164:	89 10                	mov    %edx,(%rax)
-  401166:	48 83 c0 04          	add    $0x4,%rax
-  40116a:	48 39 f0             	cmp    %rsi,%rax
-  40116d:	75 f1                	jne    401160 <phase_6+0x6c>
-  40116f:	be 00 00 00 00       	mov    $0x0,%esi
-  401174:	eb 21                	jmp    401197 <phase_6+0xa3>
-  401176:	48 8b 52 08          	mov    0x8(%rdx),%rdx
-  40117a:	83 c0 01             	add    $0x1,%eax
-  40117d:	39 c8                	cmp    %ecx,%eax
-  40117f:	75 f5                	jne    401176 <phase_6+0x82>
+  401160:	89 ca                	mov    %ecx,%edx # %edx=%ecx=7
+  401162:	2b 10                	sub    (%rax),%edx # %edx = 7 - 当前数字
+  401164:	89 10                	mov    %edx,(%rax) # 把变换后的数字写回原来的int位置
+  401166:	48 83 c0 04          	add    $0x4,%rax # 移到下一个int，第一轮后为栈顶+4
+  40116a:	48 39 f0             	cmp    %rsi,%rax # 比较当前地址是否到达整数数组结束地址（栈顶+24）
+  40116d:	75 f1                	jne    401160 <phase_6+0x6c> # 没到末尾跳，循环后，全部都会变为 7 - 读入数
+  40116f:	be 00 00 00 00       	mov    $0x0,%esi # %esi(%rsi) = 0
+  401174:	eb 21                	jmp    401197 <phase_6+0xa3> # 开始读取变换后的数字，用它作为原链表中的节点位置编号
+  401176:	48 8b 52 08          	mov    0x8(%rdx),%rdx # %rdx = 当前节点的next，沿原链表走到下一个节点
+  40117a:	83 c0 01             	add    $0x1,%eax # 节点位置计数加1，依次为1、2、3……
+  40117d:	39 c8                	cmp    %ecx,%eax # 比较当前节点编号与目标编号（7-本轮输入）
+  40117f:	75 f5                	jne    401176 <phase_6+0x82> # 编号不相等就继续走，相等则选中当前节点
   401181:	eb 05                	jmp    401188 <phase_6+0x94>
-  401183:	ba d0 32 60 00       	mov    $0x6032d0,%edx
-  401188:	48 89 54 74 20       	mov    %rdx,0x20(%rsp,%rsi,2)
-  40118d:	48 83 c6 04          	add    $0x4,%rsi
-  401191:	48 83 fe 18          	cmp    $0x18,%rsi
-  401195:	74 14                	je     4011ab <phase_6+0xb7>
-  401197:	8b 0c 34             	mov    (%rsp,%rsi,1),%ecx
-  40119a:	83 f9 01             	cmp    $0x1,%ecx
-  40119d:	7e e4                	jle    401183 <phase_6+0x8f>
-  40119f:	b8 01 00 00 00       	mov    $0x1,%eax
-  4011a4:	ba d0 32 60 00       	mov    $0x6032d0,%edx
+  401183:	ba d0 32 60 00       	mov    $0x6032d0,%edx # 目标编号为1时，直接选中原链表头节点
+  401188:	48 89 54 74 20       	mov    %rdx,0x20(%rsp,%rsi,2) # 保存本轮选中节点的8字节地址；六个地址位于栈顶+32、40、48、56、64、72
+  40118d:	48 83 c6 04          	add    $0x4,%rsi # 整数数组字节偏移加4；写地址数组时乘2，恰好每项间隔8字节
+  401191:	48 83 fe 18          	cmp    $0x18,%rsi # 偏移达到24，表示六个变换后的数字都已处理
+  401195:	74 14                	je     4011ab <phase_6+0xb7> # 六个节点选完后，开始重新连接链表
+  401197:	8b 0c 34             	mov    (%rsp,%rsi,1),%ecx # 读取本轮变换后的数字，即要选的节点位置编号
+  40119a:	83 f9 01             	cmp    $0x1,%ecx # 目标编号与1比较
+  40119d:	7e e4                	jle    401183 <phase_6+0x8f> # 目标编号<=1时直接选头节点；合法编号只有1到6，这里实际处理编号1
+  40119f:	b8 01 00 00 00       	mov    $0x1,%eax # 当前节点编号从1开始
+  4011a4:	ba d0 32 60 00       	mov    $0x6032d0,%edx # 从原链表头节点开始遍历
   4011a9:	eb cb                	jmp    401176 <phase_6+0x82>
-  4011ab:	48 8b 5c 24 20       	mov    0x20(%rsp),%rbx
-  4011b0:	48 8d 44 24 28       	lea    0x28(%rsp),%rax
-  4011b5:	48 8d 74 24 50       	lea    0x50(%rsp),%rsi
-  4011ba:	48 89 d9             	mov    %rbx,%rcx
-  4011bd:	48 8b 10             	mov    (%rax),%rdx
-  4011c0:	48 89 51 08          	mov    %rdx,0x8(%rcx)
-  4011c4:	48 83 c0 08          	add    $0x8,%rax
+  4011ab:	48 8b 5c 24 20       	mov    0x20(%rsp),%rbx # %rbx = 第一个选中节点的地址，作为新链表头
+  4011b0:	48 8d 44 24 28       	lea    0x28(%rsp),%rax # %rax指向地址数组第二项（栈顶+40）
+  4011b5:	48 8d 74 24 50       	lea    0x50(%rsp),%rsi # %rsi = 栈顶+80，节点地址数组结束之后的位置
+  4011ba:	48 89 d9             	mov    %rbx,%rcx # %rcx = 当前节点地址，开始时是新链表头
+  4011bd:	48 8b 10             	mov    (%rax),%rdx # 从地址数组读取下一个选中节点的地址
+  4011c0:	48 89 51 08          	mov    %rdx,0x8(%rcx) # 当前节点的next = 下一个选中节点的地址
+  4011c4:	48 83 c0 08          	add    $0x8,%rax # 地址数组指针移到下一项，每个节点地址占8字节
   4011c8:	48 39 f0             	cmp    %rsi,%rax
   4011cb:	74 05                	je     4011d2 <phase_6+0xde>
-  4011cd:	48 89 d1             	mov    %rdx,%rcx
+  4011cd:	48 89 d1             	mov    %rdx,%rcx # 下一个节点成为当前节点，继续连接
   4011d0:	eb eb                	jmp    4011bd <phase_6+0xc9>
-  4011d2:	48 c7 42 08 00 00 00 	movq   $0x0,0x8(%rdx)
+  4011d2:	48 c7 42 08 00 00 00 	movq   $0x0,0x8(%rdx) # 最后一个节点的next设为NULL，新链表结束
   4011d9:	00 
-  4011da:	bd 05 00 00 00       	mov    $0x5,%ebp
-  4011df:	48 8b 43 08          	mov    0x8(%rbx),%rax
-  4011e3:	8b 00                	mov    (%rax),%eax
-  4011e5:	39 03                	cmp    %eax,(%rbx)
-  4011e7:	7d 05                	jge    4011ee <phase_6+0xfa>
+  4011da:	bd 05 00 00 00       	mov    $0x5,%ebp # 六个节点需要比较五对相邻节点，计数从5开始
+  4011df:	48 8b 43 08          	mov    0x8(%rbx),%rax # %rax = 新链表中当前节点的next，即下一节点地址
+  4011e3:	8b 00                	mov    (%rax),%eax # 读取下一节点的int数值；原链表节点值记录为332、168、924、691、477、443，新顺序取决于前面的选择
+  4011e5:	39 03                	cmp    %eax,(%rbx) # 当前节点值 - 下一节点值，只更新标志位
+  4011e7:	7d 05                	jge    4011ee <phase_6+0xfa> # 按有符号比较，当前值>=下一值才跳转，否则爆炸
   4011e9:	e8 4c 02 00 00       	call   40143a <explode_bomb>
-  4011ee:	48 8b 5b 08          	mov    0x8(%rbx),%rbx
-  4011f2:	83 ed 01             	sub    $0x1,%ebp
-  4011f5:	75 e8                	jne    4011df <phase_6+0xeb>
-  4011f7:	48 83 c4 50          	add    $0x50,%rsp
+  4011ee:	48 8b 5b 08          	mov    0x8(%rbx),%rbx # 沿新链表移到下一节点
+  4011f2:	83 ed 01             	sub    $0x1,%ebp # 剩余比较次数减1，第一轮后为4
+  4011f5:	75 e8                	jne    4011df <phase_6+0xeb> # 看上一条sub设置的ZF，计数不为0就继续比较
+  4011f7:	48 83 c4 50          	add    $0x50,%rsp # 于是从大到小顺序是 3 4 5 6 1 2 -> 4 3 2 1 6 5  
   4011fb:	5b                   	pop    %rbx
   4011fc:	5d                   	pop    %rbp
   4011fd:	41 5c                	pop    %r12
