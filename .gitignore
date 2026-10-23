@@ -60,3 +60,6 @@ Thumbs.db
 __pycache__/
 *.pyc
 .venv/
+
+# Archlab extracted simulator sources (keep the original archive tracked)
+/archlab-handout/sim/
