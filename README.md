@@ -71,3 +71,50 @@ Congratulations! You've defused the bomb!
 - **Phase 6：按节点数值降序重新连接链表。** 六个整数必须是 `1～6` 的一个排列。程序将每个整数变成 `7 - 输入值`，作为从 `1` 开始计数的原链表节点位置编号；按这些编号选择并连接节点后，要求每个节点的数值大于等于下一节点。这里降序的是节点数值，不是输入或编号。本程序节点数值降序对应编号 `3 4 5 6 1 2`，反推输入为 `4 3 2 1 6 5`。
 
 详细解题批注位于 `bomb/bomb_disassembly.txt` 各条汇编指令后的 `#` 注释中，答案保存在 `bomb/answer.txt`，实验与 GDB 命令速查见 `bomb/README.md`。
+
+## Lab 3 — Attack Lab: Understanding Buffer Overflow Bugs
+
+### 实验结果
+
+在 `attacklab` 目录使用 `phase1.txt`～`phase5.txt` 中的输入进行本地验证，五个阶段全部通过，目标程序均正常退出。
+
+| 阶段 | 目标程序 | 方法与目标 | 结果 |
+| --- | --- | --- | --- |
+| Phase 1 | `ctarget` | 覆盖返回地址，执行 `touch1()` | PASS |
+| Phase 2 | `ctarget` | 注入代码，将整数 cookie 传给 `touch2` | PASS |
+| Phase 3 | `ctarget` | 注入代码，将 cookie 字符串地址传给 `touch3` | PASS |
+| Phase 4 | `rtarget` | 使用 ROP，将整数 cookie 传给 `touch2` | PASS |
+| Phase 5 | `rtarget` | 使用 ROP，计算 cookie 字符串地址并传给 `touch3` | PASS |
+
+运行命令及关键输出如下，省略了重复的 cookie 提示和完整输入字节记录：
+
+```text
+$ ./hex2raw < phase1.txt | ./ctarget -q
+Type string:Touch1!: You called touch1()
+Valid solution for level 1 with target ctarget
+PASS: Would have posted the following:
+
+$ ./hex2raw < phase2.txt | ./ctarget -q
+Type string:Touch2!: You called touch2(0x59b997fa)
+Valid solution for level 2 with target ctarget
+PASS: Would have posted the following:
+
+$ ./hex2raw < phase3.txt | ./ctarget -q
+Type string:Touch3!: You called touch3("59b997fa")
+Valid solution for level 3 with target ctarget
+PASS: Would have posted the following:
+
+$ ./hex2raw < phase4.txt | ./rtarget -q
+Type string:Touch2!: You called touch2(0x59b997fa)
+Valid solution for level 2 with target rtarget
+PASS: Would have posted the following:
+
+$ ./hex2raw < phase5.txt | ./rtarget -q
+Type string:Touch3!: You called touch3("59b997fa")
+Valid solution for level 3 with target rtarget
+PASS: Would have posted the following:
+```
+
+`-q` 表示仅在本地验证，不向课程服务器提交。输出中的 level 是目标程序内部的验证等级，因此 Phase 4、Phase 5 分别显示 `rtarget` 的 level 2、level 3。
+
+详细的栈布局、注入代码、ROP 链与调试过程见 [Attack Lab 实验记录](attacklab/readme.md)，各阶段输入保存在 `attacklab/phase1.txt`～`attacklab/phase5.txt`，反汇编记录位于 `attacklab/ctarget_disassembly.txt` 和 `attacklab/rtarget_disassembly.txt`。

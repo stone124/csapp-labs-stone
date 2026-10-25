@@ -1,0 +1,40 @@
+# Name: stone
+# Student ID: xxxxxx
+
+# 需要主函数去调用
+main:
+    irmovq stack, %rsp # 把栈顶放到stack
+    irmovq ele1, %rdi     # 将 ele1 的地址直接放入 %rdi，也就是要使用的参数
+    call rsum_list
+    halt
+
+rsum_list: # 递归的话，局部变量放到栈好些
+    andq %rdi, %rdi # 判断ls是否为null(0)，为0就直接返回0
+    jne rsum
+    irmovq $0, %rax
+    ret
+
+rsum:
+    mrmovq (%rdi), %r10 # 取出ls->val到寄存器%r10
+    pushq %r10 # 把寄存器中ls->val保存到栈
+    mrmovq 8(%rdi), %rdi # 把ls->next的地址保存到%rdi
+    call rsum_list # 把对应值保存到%rax并返回
+    popq %r10
+    addq %r10, %rax
+    ret
+
+
+.pos 0x200 # 用一个变量作为stack的地址
+stack:
+
+# Sample linked list,pdf中所说的
+.align 8
+ele1:
+    .quad 0x00a      # val
+    .quad ele2       # next，指向 ele2
+ele2:
+    .quad 0x0b0
+    .quad ele3
+ele3:
+    .quad 0xc00
+    .quad 0          # next = NULL

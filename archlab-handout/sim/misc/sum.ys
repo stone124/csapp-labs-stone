@@ -9,10 +9,10 @@
 main:
     irmovq stack, %rsp # 把栈顶放到stack
     irmovq ele1, %rdi     # 将 ele1 的地址直接放入 %rdi，也就是要使用的参数
-    call sumlist
+    call sum_list
     halt
 
-sumlist:                        # 第一个参数 ls 保存在 %rdi 中
+sum_list:                        # 第一个参数 ls 保存在 %rdi 中
     irmovq $0, %rax              # val = 0
     andq %rdi, %rdi              # 检查 ls 是否为 NULL
     je done                     # ls == NULL，结束循环
