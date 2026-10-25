@@ -1,0 +1,44 @@
+# Name: stone
+# Student ID: xxxxxx
+
+# NULL 表示空指针，即不指向任何节点；用指针值 0 表示。
+# ls == NULL 表示当前没有节点，不是节点中的 ls->val 为 0。
+# 链表末尾节点的 next 为 NULL，更新 ls 后即可据此结束遍历。
+
+# 需要主函数去调用
+main:
+    irmovq stack, %rsp # 把栈顶放到stack
+    irmovq ele1, %rdi     # 将 ele1 的地址直接放入 %rdi，也就是要使用的参数
+    call sumlist
+    halt
+
+sumlist:                        # 第一个参数 ls 保存在 %rdi 中
+    irmovq $0, %rax              # val = 0
+    andq %rdi, %rdi              # 检查 ls 是否为 NULL
+    je done                     # ls == NULL，结束循环
+
+loop:
+    mrmovq (%rdi), %r10          # 暂存 ls->val 到 %r10
+    addq %r10, %rax              # val += ls->val
+    mrmovq 8(%rdi), %r10         # 暂存 ls->next 到 %r10
+    rrmovq %r10, %rdi            # ls = ls->next
+    andq %rdi, %rdi              # 检查 ls 是否为 NULL
+    jne loop                    # ls != NULL，继续循环
+
+done:
+    ret                         # 返回 val，结果保存在 %rax 中
+
+.pos 0x200 # 用一个变量作为stack的地址
+stack:
+
+# Sample linked list,pdf中所说的
+.align 8
+ele1:
+    .quad 0x00a      # val
+    .quad ele2       # next，指向 ele2
+ele2:
+    .quad 0x0b0
+    .quad ele3
+ele3:
+    .quad 0xc00
+    .quad 0          # next = NULL

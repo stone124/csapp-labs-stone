@@ -61,5 +61,34 @@ __pycache__/
 *.pyc
 .venv/
 
-# Archlab extracted simulator sources (keep the original archive tracked)
-/archlab-handout/sim/
+# Arch Lab：保留源码，忽略构建产物和自动生成的测试文件
+/archlab-handout/sim/**/*.yo
+/archlab-handout/sim/**/*.yis
+/archlab-handout/sim/**/*.pipe
+/archlab-handout/sim/**/*.seq
+/archlab-handout/sim/**/*.seq+
+
+# 汇编器、模拟器和 HCL 工具
+/archlab-handout/sim/misc/yas
+/archlab-handout/sim/misc/yis
+/archlab-handout/sim/misc/hcl2c
+/archlab-handout/sim/misc/hcl2v
+/archlab-handout/sim/misc/hcl2u
+/archlab-handout/sim/misc/mux4
+/archlab-handout/sim/seq/ssim
+/archlab-handout/sim/seq/ssim+
+/archlab-handout/sim/pipe/psim
+
+# flex、bison 和 HCL 自动生成的 C 源码
+/archlab-handout/sim/misc/yas-grammar.c
+/archlab-handout/sim/misc/lex.yy.c
+/archlab-handout/sim/misc/hcl.tab.c
+/archlab-handout/sim/misc/hcl.tab.h
+/archlab-handout/sim/seq/seq*-*.c
+/archlab-handout/sim/pipe/pipe-*.c
+
+# 自动生成的测试程序（保留 misc/*.ys、pipe/ncopy.ys 和 y86-code/*.ys）
+/archlab-handout/sim/ptest/*.ys
+/archlab-handout/sim/pipe/sdriver.ys
+/archlab-handout/sim/pipe/ldriver.ys
+/archlab-handout/sim/pipe/driver*.ys
