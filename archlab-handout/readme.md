@@ -162,12 +162,12 @@ make -B CC="gcc -std=gnu17 -fcommon"
 
 若只需构建 Part A 使用的工具，也可以在 `archlab-handout/sim/misc` 中执行相同命令。
 
-| 参数 | 作用 |
-| --- | --- |
+| 参数             | 作用                                                     |
+| ---------------- | -------------------------------------------------------- |
 | `CC="gcc ..."` | 覆盖 Makefile 的 C 编译器变量，参数也会传给子目录的 make |
-| `-std=gnu17` | 使用 GNU C17，兼容旧代码的函数声明写法 |
-| `-fcommon` | 允许合并多个编译单元中同名的暂定全局变量定义，兼容旧代码 |
-| `-B` | 强制重新构建，确保已有 `.o` 文件也使用新参数 |
+| `-std=gnu17`   | 使用 GNU C17，兼容旧代码的函数声明写法                   |
+| `-fcommon`     | 允许合并多个编译单元中同名的暂定全局变量定义，兼容旧代码 |
+| `-B`           | 强制重新构建，确保已有 `.o` 文件也使用新参数           |
 
 这些参数只对本次构建生效，不会修改 Makefile 或系统默认设置。后续构建继续使用相同的 `CC` 参数；不需要强制重编译时可以省略 `-B`。
 
@@ -286,7 +286,6 @@ Changes to memory:
 - `%rsp` 最终恢复到 `0x200`，递归过程中的栈空间已逐层弹回。
 - `0x1f0`、`0x1e0`、`0x1d0` 分别留有递归过程中保存的节点值；`0x1f8` 留有 `call` 保存的返回地址。这些栈内存不会因 `popq` 或 `ret` 自动清零。
 
-
 ### 第三个程序：copy.ys（复制数据块并计算异或校验值）
 
 使用源数据 `0x00a`、`0x0b0`、`0xc00`，目标数据初始为 `0x111`、`0x222`、`0x333`，长度为 3。预期复制后目标数据与源数据一致，返回值为 `0x00a ^ 0x0b0 ^ 0xc00 = 0xcba`。本次运行记录如下：
@@ -318,3 +317,75 @@ Changes to memory:
 - `dest` 的三个地址 `0xa8`、`0xb0`、`0xb8` 分别写入 `0xa`、`0xb0`、`0xc00`，复制结果正确。
 - `%rdi` 和 `%rsi` 分别指向源数据块和目标数据块末尾之后的位置；`%rdx` 最终为 0，与运行前相同，因此未列在寄存器变化中。
 - `%rsp` 恢复到 `0x200`；`0x1f8` 中的 `0x31` 是调用时保存的返回地址，函数返回后该内存仍保留原值。
+
+## 11. Part B：让 SEQ 支持 iaddq
+
+### 要做什么
+
+修改 `sim/seq/seq-full.hcl`，让 SEQ 处理器支持 `iaddq V, rB`：把立即数 `V` 加到寄存器 `rB`，结果写回 `rB`，同时更新条件码。例如 `iaddq $8, %rdi` 相当于给 `%rdi` 加 8。
+
+根据这条指令需要的数据，在对应控制信号中加入 `IIADDQ`：
+
+| 位置       | 修改内容                                                                                               |
+| ---------- | ------------------------------------------------------------------------------------------------------ |
+| 取指       | 在 `instr_valid`、`need_regids`、`need_valC` 中加入 `IIADDQ`，识别指令并读取寄存器编号和立即数 |
+| 译码、写回 | `srcB` 和 `dstE` 选择 `rB`，读取原值并将运算结果写回                                             |
+| 执行       | `aluA` 选择 `valC`，`aluB` 选择 `valB`，计算立即数加寄存器值                                   |
+| 条件码     | 在 `set_cc` 中加入 `IIADDQ`，更新 ZF、SF、OF                                                       |
+
+`alufun` 默认就是 `ALUADD`，可以直接使用；这条指令不读写数据内存，也不需要额外修改跳转逻辑。
+
+### 构建和验证
+
+在 `archlab-handout/sim/seq` 中构建命令行版本，并运行包含 `iaddq` 的示例：
+
+```bash
+make VERSION=full CFLAGS="-Wall -O2 -std=gnu89 -fcommon" GUIMODE= TKLIBS= TKINC=
+../misc/yas ../y86-code/asumi.ys
+./ssim -t ../y86-code/asumi.yo
+```
+
+空的 `GUIMODE`、`TKLIBS`、`TKINC` 用于关闭 GUI 构建，避免依赖 Tcl/Tk。`-t` 会把 SEQ 的执行结果与 ISA 模拟器进行比较。本次输出节选：
+
+```text
+32 instructions executed
+Status = HLT
+Condition Codes: Z=1 S=0 O=0
+Changed Register State:
+%rax:   0x0000000000000000      0x0000abcdabcdabcd
+%rsp:   0x0000000000000000      0x0000000000000100
+%rdi:   0x0000000000000000      0x0000000000000038
+%r10:   0x0000000000000000      0x0000a000a000a000
+Changed Memory State:
+0x00f0: 0x0000000000000000      0x0000000000000055
+0x00f8: 0x0000000000000000      0x0000000000000013
+ISA Check Succeeds
+```
+
+接着运行原有程序的回归测试，以及包含 `iaddq` 的测试：
+
+```bash
+cd ../y86-code
+make testssim
+cd ../ptest
+make SIM=../seq/ssim TFLAGS=-i
+```
+
+本次 `make testssim` 的 16 个示例均输出 `ISA Check Succeeds`；`ptest` 输出如下：
+
+```text
+./optest.pl -s ../seq/ssim -i
+Simulating with ../seq/ssim
+  All 58 ISA Checks Succeed
+./jtest.pl -s ../seq/ssim -i
+Simulating with ../seq/ssim
+  All 96 ISA Checks Succeed
+./ctest.pl -s ../seq/ssim -i
+Simulating with ../seq/ssim
+  All 22 ISA Checks Succeed
+./htest.pl -s ../seq/ssim -i
+Simulating with ../seq/ssim
+  All 756 ISA Checks Succeed
+```
+
+以上运行结果表明：`asumi.ys` 执行正确，原有示例未出现回归，带 `-i` 的四组测试共 932 项 ISA 检查全部通过。
