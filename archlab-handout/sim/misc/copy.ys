@@ -1,0 +1,45 @@
+# Name: stone
+# Student ID: xxxxxx
+
+# 需要主函数去调用
+main:
+    irmovq stack, %rsp # 把栈顶放到stack
+    irmovq src, %rdi    # 初始化copy_block参数，%rdi %rsi %rdx
+    irmovq dest, %rsi
+    irmovq $3, %rdx
+    call copy_block
+    halt
+
+copy_block:
+    irmovq $0, %rax # 保存result = 0到%rax
+    irmovq $0, %r10 # 保存常量0
+    subq %r10, %rdx # 开始的循环s判断
+    jg loop
+    ret
+loop:
+    mrmovq (%rdi), %r8 # 取出src地址内存的东西，就是val
+    irmovq $8, %r9 # 自增src地址
+    addq %r9, %rdi 
+    rmmovq %r8, (%rsi) # 在目标地址dest保存val
+    addq %r9, %rsi # 自增dest
+    xorq %r8, %rax # 求异或操作
+    irmovq $1, %r11 # 自减len
+    subq %r11, %rdx
+    # subq %r10, %rdx # 循环判断，可省略，条件码和上一个运算一致
+    jg loop
+    ret # 返回
+
+.align 8
+# Source block
+src:    
+    .quad 0x00a
+    .quad 0x0b0
+    .quad 0xc00
+# Destination block
+dest:   
+    .quad 0x111
+    .quad 0x222
+    .quad 0x333
+
+.pos 0x200 # 用一个变量作为stack的地址
+stack:
