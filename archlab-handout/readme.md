@@ -389,3 +389,74 @@ Simulating with ../seq/ssim
 ```
 
 以上运行结果表明：`asumi.ys` 执行正确，原有示例未出现回归，带 `-i` 的四组测试共 932 项 ISA 检查全部通过。
+
+## part c
+
+这里优化可以认为是两个方面，1 减少指令量 2 优化流水线
+
+优化流水线可以分为两个方面，1 减少前后两条指令依赖，这样流水线就可以打满
+
+2 减小条件预测失败的代价，让条件更容易预测
+
+先找指令依赖，这很明显
+
+Loop:	mrmovq (%rdi), %r10	# read val from src...
+	rmmovq %r10, (%rsi)	# ...and store it to dst 
+
+这里和上一条指令形成了依赖，必须等上条走完memory阶段，这一条才能走decode，可以提前进行位置加减，这样就能打满流水线，把常数提前存到r11
+
+就可以变成这个样子
+
+Loop:	mrmovq (%rdi), %r10	# read val from src...
+	irmovq $8, %r11
+	addq %r11, %rdi		# src++
+	addq %r11, %rsi		# dst++
+	rmmovq %r10, -8(%rsi)	# ...and store it to dst
+
+rsi地址需要进行变换，一个元素8个字节
+
+然后，条件预测更容易，就是把条件判断改为经常成立的一条
+andq %rdx,%rdx		# len <= 0?
+
+这个很明显，大多数调用情况都是len > 0，改为 len > 0更合理
+andq %rdx,%rdx		# len > 0?
+	jg Loop		# if so, goto Loop:
+	ret # if not, ret
+先测试一版，
+
+make -B psim VERSION=full CFLAGS="-Wall -O2 -std=gnu89 -fcommon" GUIMODE= TKLIBS= TKINC=
+
+./correctness.pl -f ncopy.ys       # 在 ISA 模拟器上检查汇编逻辑
+./correctness.pl -p -f ncopy.ys    # 在 PIPE 模拟器上检查
+
+两项都通过后，测性能：
+
+./benchmark.pl -f ncopy.ys
+
+Average CPE     14.03
+Score   0.0/60.0
+
+看看能不能减小指令量
+
+jle Npos		# if so, goto Npos:
+	irmovq $1, %r10
+	addq %r10, %rax		# count++
+Npos:	irmovq $1, %r10
+
+这里无论走哪一个分支都要irmovq $1, %r10，，可以提前irmovq $1, %r10
+
+
+subq %r10, %rdx		# len--
+	andq %rdx,%rdx		# len > 0?
+	jg Loop			# if so, goto Loop:
+
+去掉andq的条件判断效果是一样的
+
+再测试一下
+
+Average CPE     12.55
+Score   0.0/60.0
+
+好了一些，还是挺拉跨的。
+
+只好改变算法逻辑了，在程序优化这章讲了循环展开方法，可以尝试下，也就是一次处理多个元素，也就是把计算链路拆成两条并行的。

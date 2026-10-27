@@ -4,6 +4,7 @@
 # Return the number of positive words (>0) contained in src.
 #
 # Include your name and ID here.
+# name: stone
 #
 # Describe how and why you modified the baseline code.
 #
@@ -17,22 +18,24 @@ ncopy:
 # You can modify this portion
 	# Loop header
 	xorq %rax,%rax		# count = 0;
-	andq %rdx,%rdx		# len <= 0?
-	jle Done		# if so, goto Done:
+	andq %rdx,%rdx		# len > 0?
+	jg Loop		# if so, goto Loop:
+	ret # if not, ret
 
 Loop:	mrmovq (%rdi), %r10	# read val from src...
-	rmmovq %r10, (%rsi)	# ...and store it to dst
+	irmovq $8, %r11
+	addq %r11, %rdi		# src++
+	addq %r11, %rsi		# dst++
+	rmmovq %r10, -8(%rsi)	# ...and store it to dst 这里和上一条指令形成了依赖，必须等上条走完memory阶段，这一条才能走decode，可以提前进行位置加减
 	andq %r10, %r10		# val <= 0?
-	jle Npos		# if so, goto Npos:
 	irmovq $1, %r10
+	jle Npos		# if so, goto Npos:
 	addq %r10, %rax		# count++
-Npos:	irmovq $1, %r10
+Npos:	
 	subq %r10, %rdx		# len--
-	irmovq $8, %r10
-	addq %r10, %rdi		# src++
-	addq %r10, %rsi		# dst++
-	andq %rdx,%rdx		# len > 0?
 	jg Loop			# if so, goto Loop:
+
+
 ##################################################################
 # Do not modify the following section of code
 # Function epilogue.
