@@ -401,7 +401,7 @@ Simulating with ../seq/ssim
 先找指令依赖，这很明显
 
 Loop:	mrmovq (%rdi), %r10	# read val from src...
-	rmmovq %r10, (%rsi)	# ...and store it to dst 
+	rmmovq %r10, (%rsi)	# ...and store it to dst
 
 这里和上一条指令形成了依赖，必须等上条走完memory阶段，这一条才能走decode，可以提前进行位置加减，这样就能打满流水线，把常数提前存到r11
 
@@ -445,7 +445,6 @@ Npos:	irmovq $1, %r10
 
 这里无论走哪一个分支都要irmovq $1, %r10，，可以提前irmovq $1, %r10
 
-
 subq %r10, %rdx		# len--
 	andq %rdx,%rdx		# len > 0?
 	jg Loop			# if so, goto Loop:
@@ -460,3 +459,65 @@ Score   0.0/60.0
 好了一些，还是挺拉跨的。
 
 只好改变算法逻辑了，在程序优化这章讲了循环展开方法，可以尝试下，也就是一次处理多个元素，也就是把计算链路拆成两条并行的。
+
+拆成两行并行，首先最开始len > 1，两个val值得分别判断，最后还要加个remain循环
+
+	# Loop header
+	xorq %rax,%rax		# count = 0;
+	rrmovq %rdx, %r8
+	irmovq $1, %r10
+	subq %r10, %r8		# len > 1?
+	jg Loop		# if so, goto Loop:
+	jmp Remain # if not, remain
+
+Loop:
+	mrmovq (%rdi), %r10	# read val from src...
+	mrmovq 8(%rdi), %r8
+	irmovq $16, %r11
+	addq %r11, %rdi		# src+2
+	addq %r11, %rsi		# dst+2
+	rmmovq %r10, -16(%rsi)	# ...and store it to dst 
+	rmmovq %r8, -8(%rsi)
+	andq %r10, %r10		# val1 <= 0?
+	irmovq $1, %r10
+	jle Val
+	addq %r10, %rax
+Val:
+	andq %r8, %r8  # val2 <= 0
+	jle Npos		# if so, goto Npos:
+	addq %r10, %rax		# count++
+Npos:
+	irmovq $2, %r10
+	subq %r10, %rdx		# len-2
+	rrmovq %rdx, %r8
+	irmovq $1, %r10
+	subq %r10, %r8		# len > 1?
+	jg Loop			# if so, goto Loop:
+Remain:
+	andq %rdx, %rdx # len <= 0
+	jle Done
+	mrmovq (%rdi), %r10 # src[0]读出val
+	rmmovq %r10, (%rsi) # 放到dst里面
+
+	andq %r10, %r10
+	jle Done # val <=0, jump done
+	irmovq $1, %r10
+	addq %r10, %rax
+
+改完之后变为
+
+Average CPE     11.78
+Score   0.0/60.0
+
+再进行精简下指令
+
+有很多常数赋值，把他们统一挪到前面去
+
+irmovq $1, %r9 # 常数1, %r9
+	irmovq $2, %rcx # 常数2, %rcx
+	irmovq $16, %r11 # 常数地址挪2，也就是16字节
+
+测试结果为
+
+Average CPE     10.01
+Score   9.8/60.0

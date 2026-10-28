@@ -18,22 +18,42 @@ ncopy:
 # You can modify this portion
 	# Loop header
 	xorq %rax,%rax		# count = 0;
-	andq %rdx,%rdx		# len > 0?
+	irmovq $1, %r9 # 常数1, %r9
+	irmovq $2, %rcx # 常数2, %rcx
+	irmovq $16, %r11 # 常数地址挪2，也就是16字节
+	rrmovq %rdx, %r8
+	subq %r9, %r8		# len > 1?
 	jg Loop		# if so, goto Loop:
-	ret # if not, ret
+	jmp Remain # if not, remain
 
-Loop:	mrmovq (%rdi), %r10	# read val from src...
-	irmovq $8, %r11
-	addq %r11, %rdi		# src++
-	addq %r11, %rsi		# dst++
-	rmmovq %r10, -8(%rsi)	# ...and store it to dst 这里和上一条指令形成了依赖，必须等上条走完memory阶段，这一条才能走decode，可以提前进行位置加减
-	andq %r10, %r10		# val <= 0?
-	irmovq $1, %r10
+Loop:
+	mrmovq (%rdi), %r10	# read val from src...
+	mrmovq 8(%rdi), %r8
+	addq %r11, %rdi		# src+2
+	addq %r11, %rsi		# dst+2
+	rmmovq %r10, -16(%rsi)	# ...and store it to dst 这里和上一条指令形成了依赖，必须等上条走完memory阶段，这一条才能走decode，可以提前进行位置加减
+	rmmovq %r8, -8(%rsi)
+	andq %r10, %r10		# val1 <= 0?
+	jle Val
+	addq %r9, %rax
+Val:
+	andq %r8, %r8  # val2 <= 0
 	jle Npos		# if so, goto Npos:
-	addq %r10, %rax		# count++
+	addq %r9, %rax		# count++
 Npos:	
-	subq %r10, %rdx		# len--
+	subq %rcx, %rdx		# len-2
+	rrmovq %rdx, %r8
+	subq %r9, %r8		# len > 1?
 	jg Loop			# if so, goto Loop:
+Remain:
+	andq %rdx, %rdx # len <= 0
+	jle Done
+	mrmovq (%rdi), %r10 # src[0]读出val
+	rmmovq %r10, (%rsi) # 放到dst里面
+	
+	andq %r10, %r10
+	jle Done # val <=0, jump done
+	addq %r9, %rax
 
 
 ##################################################################
