@@ -521,3 +521,20 @@ irmovq $1, %r9 # 常数1, %r9
 
 Average CPE     10.01
 Score   9.8/60.0
+
+尝试四路展开，结果如下
+
+Average CPE     9.10
+Score   28.0/60.0
+
+尝试8路展开，结果如下
+
+Average CPE     8.83
+Score   33.4/60.0
+
+尝试16路展开，结果如下
+
+Average CPE	9.17
+Score	26.6/60.0
+
+8路展开是性能最好的，保持8路展开。

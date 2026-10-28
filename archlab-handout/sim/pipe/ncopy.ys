@@ -6,8 +6,14 @@
 # Include your name and ID here.
 # name: stone
 #
-# Describe how and why you modified the baseline code.
+# 优化思路：每轮处理 8 个元素，分摊指针更新和循环判断的开销。
+# 常数在循环外初始化；交错安排加载与独立指令，避免加载后立即使用造成停顿。
+# 两两复制、分别统计正数；最后用单元素循环处理不足 8 个的尾部。
 #
+# 寄存器用途：
+# %rax：正数个数，也是返回值；%rdi：src；%rsi：dst；%rdx：剩余长度。
+# %r9：常数 1；%rcx：常数 8；%r11：指针步长，主循环为 64，尾部为 8。
+# %r10、%r8：暂存元素值；%r8 也用于循环边界比较，不修改实际长度。
 ##################################################################
 # Do not modify this portion
 # Function prologue.
@@ -16,45 +22,93 @@ ncopy:
 
 ##################################################################
 # You can modify this portion
-	# Loop header
-	xorq %rax,%rax		# count = 0;
-	irmovq $1, %r9 # 常数1, %r9
-	irmovq $2, %rcx # 常数2, %rcx
-	irmovq $16, %r11 # 常数地址挪2，也就是16字节
-	rrmovq %rdx, %r8
-	subq %r9, %r8		# len > 1?
-	jg Loop		# if so, goto Loop:
-	jmp Remain # if not, remain
+	# 入口：count 清零，常数只初始化一次
+	xorq %rax, %rax        # count = 0
+	irmovq $1, %r9         # count++ 和尾部 len-- 使用的常数 1
+	irmovq $8, %rcx        # 主循环每次处理 8 个元素
+	irmovq $64, %r11       # 8 个元素各 8 字节，每轮前进 64 字节
+	rrmovq %rdx, %r8       # 复制长度，比较时保留实际 len
+	subq %rcx, %r8         # 临时计算 len - 8
+	jge Loop               # len >= 8，进入主循环
+	jmp Remain             # 不足 8 个，交给尾部处理
 
 Loop:
-	mrmovq (%rdi), %r10	# read val from src...
-	mrmovq 8(%rdi), %r8
-	addq %r11, %rdi		# src+2
-	addq %r11, %rsi		# dst+2
-	rmmovq %r10, -16(%rsi)	# ...and store it to dst 这里和上一条指令形成了依赖，必须等上条走完memory阶段，这一条才能走decode，可以提前进行位置加减
-	rmmovq %r8, -8(%rsi)
-	andq %r10, %r10		# val1 <= 0?
-	jle Val
-	addq %r9, %rax
-Val:
-	andq %r8, %r8  # val2 <= 0
-	jle Npos		# if so, goto Npos:
-	addq %r9, %rax		# count++
-Npos:	
-	subq %rcx, %rdx		# len-2
-	rrmovq %rdx, %r8
-	subq %r9, %r8		# len > 1?
-	jg Loop			# if so, goto Loop:
-Remain:
-	andq %rdx, %rdx # len <= 0
-	jle Done
-	mrmovq (%rdi), %r10 # src[0]读出val
-	rmmovq %r10, (%rsi) # 放到dst里面
-	
-	andq %r10, %r10
-	jle Done # val <=0, jump done
-	addq %r9, %rax
+	# 第 1、2 个元素：两两加载、存储，复用临时寄存器
+	mrmovq (%rdi), %r10  # val1 = src[0]
+	mrmovq 8(%rdi), %r8  # val2 = src[1]
+	rmmovq %r10, (%rsi)  # 保存本轮第 1 个元素
+	rmmovq %r8, 8(%rsi)  # 保存本轮第 2 个元素
+	andq %r10, %r10        # 判断 val1
+	jle Val2               # 非正数跳过计数
+	addq %r9, %rax         # 正数则 count++
+Val2:
+	andq %r8, %r8          # 判断 val2
+	jle Pair2               # 非正数跳过计数
+	addq %r9, %rax         # 正数则 count++
+Pair2:
+	# 第 3、4 个元素：两两加载、存储，复用临时寄存器
+	mrmovq 16(%rdi), %r10  # val3 = src[2]
+	mrmovq 24(%rdi), %r8  # val4 = src[3]
+	rmmovq %r10, 16(%rsi)  # 保存本轮第 3 个元素
+	rmmovq %r8, 24(%rsi)  # 保存本轮第 4 个元素
+	andq %r10, %r10        # 判断 val3
+	jle Val4               # 非正数跳过计数
+	addq %r9, %rax         # 正数则 count++
+Val4:
+	andq %r8, %r8          # 判断 val4
+	jle Pair3               # 非正数跳过计数
+	addq %r9, %rax         # 正数则 count++
+Pair3:
+	# 第 5、6 个元素：两两加载、存储，复用临时寄存器
+	mrmovq 32(%rdi), %r10  # val5 = src[4]
+	mrmovq 40(%rdi), %r8  # val6 = src[5]
+	rmmovq %r10, 32(%rsi)  # 保存本轮第 5 个元素
+	rmmovq %r8, 40(%rsi)  # 保存本轮第 6 个元素
+	andq %r10, %r10        # 判断 val5
+	jle Val6               # 非正数跳过计数
+	addq %r9, %rax         # 正数则 count++
+Val6:
+	andq %r8, %r8          # 判断 val6
+	jle Pair4               # 非正数跳过计数
+	addq %r9, %rax         # 正数则 count++
+Pair4:
+	# 第 7、8 个元素：两两加载、存储，复用临时寄存器
+	mrmovq 48(%rdi), %r10  # val7 = src[6]
+	mrmovq 56(%rdi), %r8  # val8 = src[7]
+	addq %r11, %rdi        # src += 8；用独立指令隔开加载和使用
+	addq %r11, %rsi        # dst += 8，指向下一组起点
+	rmmovq %r10, -16(%rsi)  # 保存本轮第 7 个元素
+	rmmovq %r8, -8(%rsi)  # 保存本轮第 8 个元素
+	# dst 已前进 64 字节，-16、-8 分别对应原 dst[6]、dst[7]
+	andq %r10, %r10        # 判断 val7
+	jle Val8               # 非正数跳过计数
+	addq %r9, %rax         # 正数则 count++
+Val8:
+	andq %r8, %r8          # 判断 val8
+	jle Next               # 非正数跳过计数
+	addq %r9, %rax         # 正数则 count++
+Next:
+	subq %rcx, %rdx        # len -= 8，更新实际剩余长度
+	rrmovq %rdx, %r8       # 元素值已用完，复用 %r8 进行比较
+	subq %rcx, %r8         # 临时计算剩余 len - 8
+	jge Loop               # 剩余至少 8 个，继续主循环
 
+Remain:
+	# 主循环退出后剩余 0～7 个；入口 len <= 0 也从这里直接返回
+	andq %rdx, %rdx        # 判断剩余 len 是否大于 0
+	jle Done               # len <= 0，不再读取或写入元素
+	irmovq $8, %r11        # 尾部改成每次前进 1 个元素（8 字节）
+RemainLoop:
+	mrmovq (%rdi), %r10    # val = *src
+	addq %r11, %rdi        # src++，与刚加载的值无依赖
+	addq %r11, %rsi        # dst++，提前更新目标指针
+	rmmovq %r10, -8(%rsi)  # 写入更新前的 dst 所指位置
+	andq %r10, %r10        # 判断 val
+	jle RemainNext         # val <= 0，跳过本次计数
+	addq %r9, %rax         # val > 0，count++
+RemainNext:
+	subq %r9, %rdx         # len--，同时为下一条跳转设置条件码
+	jg RemainLoop          # len > 0，继续处理剩余元素；否则进入 Done 返回
 
 ##################################################################
 # Do not modify the following section of code
