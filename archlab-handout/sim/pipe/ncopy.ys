@@ -7,13 +7,14 @@
 # name: stone
 #
 # 优化思路：每轮处理 8 个元素，分摊指针更新和循环判断的开销。
-# 常数在循环外初始化；交错安排加载与独立指令，避免加载后立即使用造成停顿。
-# 两两复制、分别统计正数；最后用单元素循环处理不足 8 个的尾部。
+# 使用 iaddq 直接进行常数加减，省去常数寄存器的初始化。
+# 主循环分四组，每组先加载两个元素，再分别存储和计数。
+# 一轮连续处理 8 个元素；尾部按数量选择标签，再从后往前连续处理，省去指针更新和循环控制。
 #
 # 寄存器用途：
-# %rax：正数个数，也是返回值；%rdi：src；%rsi：dst；%rdx：剩余长度。
-# %r9：常数 1；%rcx：常数 8；%r11：指针步长，主循环为 64，尾部为 8。
-# %r10、%r8：暂存元素值；%r8 也用于循环边界比较，不修改实际长度。
+# %rax：正数个数，也是返回值；%rdi：src；%rsi：dst。
+# %rdx：主循环保存预扣下一组 8 个后的长度；尾部先加 7，以“余数 - 1”定位。
+# %r10、%r8：暂存主循环每组两个元素；尾部复用 %r10。
 ##################################################################
 # Do not modify this portion
 # Function prologue.
@@ -22,93 +23,129 @@ ncopy:
 
 ##################################################################
 # You can modify this portion
-	# 入口：count 清零，常数只初始化一次
+	# 入口先预扣一组：减完非负，才够处理 8 个元素
 	xorq %rax, %rax        # count = 0
-	irmovq $1, %r9         # count++ 和尾部 len-- 使用的常数 1
-	irmovq $8, %rcx        # 主循环每次处理 8 个元素
-	irmovq $64, %r11       # 8 个元素各 8 字节，每轮前进 64 字节
-	rrmovq %rdx, %r8       # 复制长度，比较时保留实际 len
-	subq %rcx, %r8         # 临时计算 len - 8
-	jge Loop               # len >= 8，进入主循环
-	jmp Remain             # 不足 8 个，交给尾部处理
+	iaddq $-8, %rdx        # 预扣第一组的 8 个元素，同时设置条件码
+	jl Remain              # 原 len < 8，直接进入尾部定位
 
 Loop:
-	# 第 1、2 个元素：两两加载、存储，复用临时寄存器
-	mrmovq (%rdi), %r10  # val1 = src[0]
-	mrmovq 8(%rdi), %r8  # val2 = src[1]
-	rmmovq %r10, (%rsi)  # 保存本轮第 1 个元素
-	rmmovq %r8, 8(%rsi)  # 保存本轮第 2 个元素
-	andq %r10, %r10        # 判断 val1
-	jle Val2               # 非正数跳过计数
-	addq %r9, %rax         # 正数则 count++
+	# 第 1 组：先加载两个元素，再分别存储和计数。
+	mrmovq (%rdi), %r10
+	mrmovq 8(%rdi), %r8
+	rmmovq %r10, (%rsi)
+	rmmovq %r8, 8(%rsi)
+	andq %r10, %r10        # 判断第 1 个元素
+	jle Val2               # 非正数跳过 count++
+	iaddq $1, %rax
 Val2:
-	andq %r8, %r8          # 判断 val2
-	jle Pair2               # 非正数跳过计数
-	addq %r9, %rax         # 正数则 count++
+	andq %r8, %r8          # 判断第 2 个元素
+	jle Pair2
+	iaddq $1, %rax
 Pair2:
-	# 第 3、4 个元素：两两加载、存储，复用临时寄存器
-	mrmovq 16(%rdi), %r10  # val3 = src[2]
-	mrmovq 24(%rdi), %r8  # val4 = src[3]
-	rmmovq %r10, 16(%rsi)  # 保存本轮第 3 个元素
-	rmmovq %r8, 24(%rsi)  # 保存本轮第 4 个元素
-	andq %r10, %r10        # 判断 val3
-	jle Val4               # 非正数跳过计数
-	addq %r9, %rax         # 正数则 count++
+	# 第 2 组：先加载两个元素，再分别存储和计数。
+	mrmovq 16(%rdi), %r10
+	mrmovq 24(%rdi), %r8
+	rmmovq %r10, 16(%rsi)
+	rmmovq %r8, 24(%rsi)
+	andq %r10, %r10        # 判断第 3 个元素
+	jle Val4               # 非正数跳过 count++
+	iaddq $1, %rax
 Val4:
-	andq %r8, %r8          # 判断 val4
-	jle Pair3               # 非正数跳过计数
-	addq %r9, %rax         # 正数则 count++
+	andq %r8, %r8          # 判断第 4 个元素
+	jle Pair3
+	iaddq $1, %rax
 Pair3:
-	# 第 5、6 个元素：两两加载、存储，复用临时寄存器
-	mrmovq 32(%rdi), %r10  # val5 = src[4]
-	mrmovq 40(%rdi), %r8  # val6 = src[5]
-	rmmovq %r10, 32(%rsi)  # 保存本轮第 5 个元素
-	rmmovq %r8, 40(%rsi)  # 保存本轮第 6 个元素
-	andq %r10, %r10        # 判断 val5
-	jle Val6               # 非正数跳过计数
-	addq %r9, %rax         # 正数则 count++
+	# 第 3 组：先加载两个元素，再分别存储和计数。
+	mrmovq 32(%rdi), %r10
+	mrmovq 40(%rdi), %r8
+	rmmovq %r10, 32(%rsi)
+	rmmovq %r8, 40(%rsi)
+	andq %r10, %r10        # 判断第 5 个元素
+	jle Val6               # 非正数跳过 count++
+	iaddq $1, %rax
 Val6:
-	andq %r8, %r8          # 判断 val6
-	jle Pair4               # 非正数跳过计数
-	addq %r9, %rax         # 正数则 count++
+	andq %r8, %r8          # 判断第 6 个元素
+	jle Pair4
+	iaddq $1, %rax
 Pair4:
-	# 第 7、8 个元素：两两加载、存储，复用临时寄存器
-	mrmovq 48(%rdi), %r10  # val7 = src[6]
-	mrmovq 56(%rdi), %r8  # val8 = src[7]
-	addq %r11, %rdi        # src += 8；用独立指令隔开加载和使用
-	addq %r11, %rsi        # dst += 8，指向下一组起点
-	rmmovq %r10, -16(%rsi)  # 保存本轮第 7 个元素
-	rmmovq %r8, -8(%rsi)  # 保存本轮第 8 个元素
-	# dst 已前进 64 字节，-16、-8 分别对应原 dst[6]、dst[7]
-	andq %r10, %r10        # 判断 val7
-	jle Val8               # 非正数跳过计数
-	addq %r9, %rax         # 正数则 count++
+	# 第 4 组：先加载两个元素，再分别存储和计数。
+	mrmovq 48(%rdi), %r10
+	mrmovq 56(%rdi), %r8
+	iaddq $64, %rdi        # 本轮已完成全部加载，src 指向下一组
+	iaddq $64, %rsi        # dst 前进后，用负偏移保存最后两个元素
+	rmmovq %r10, -16(%rsi)
+	rmmovq %r8, -8(%rsi)
+	andq %r10, %r10        # 判断第 7 个元素
+	jle Val8               # 非正数跳过 count++
+	iaddq $1, %rax
 Val8:
-	andq %r8, %r8          # 判断 val8
-	jle Next               # 非正数跳过计数
-	addq %r9, %rax         # 正数则 count++
+	andq %r8, %r8          # 判断第 8 个元素
+	jle Next
+	iaddq $1, %rax
 Next:
-	subq %rcx, %rdx        # len -= 8，更新实际剩余长度
-	rrmovq %rdx, %r8       # 元素值已用完，复用 %r8 进行比较
-	subq %rcx, %r8         # 临时计算剩余 len - 8
-	jge Loop               # 剩余至少 8 个，继续主循环
+	iaddq $-8, %rdx        # 预扣下一组，同时设置循环条件码
+	jge Loop
 
 Remain:
-	# 主循环退出后剩余 0～7 个；入口 len <= 0 也从这里直接返回
-	andq %rdx, %rdx        # 判断剩余 len 是否大于 0
-	jle Done               # len <= 0，不再读取或写入元素
-	irmovq $8, %r11        # 尾部改成每次前进 1 个元素（8 字节）
-RemainLoop:
-	mrmovq (%rdi), %r10    # val = *src
-	addq %r11, %rdi        # src++，与刚加载的值无依赖
-	addq %r11, %rsi        # dst++，提前更新目标指针
-	rmmovq %r10, -8(%rsi)  # 写入更新前的 dst 所指位置
-	andq %r10, %r10        # 判断 val
-	jle RemainNext         # val <= 0，跳过本次计数
-	addq %r9, %rax         # val > 0，count++
-RemainNext:
-	subq %r9, %rdx         # len--，同时为下一条跳转设置条件码
-	jg RemainLoop          # len > 0，继续处理剩余元素；否则进入 Done 返回
+	iaddq $7, %rdx         # 从“余数 - 8”变为“余数 - 1”，先区分 0 和 1
+	jl Done                # 余数为 0，直接返回
+	je Tail1               # 余数为 1，直接处理最后一个元素
+
+	# 剩余至少 2 个，依次区分 2/3、4/5、6/7；无需跳到单独的定位区
+	iaddq $-2, %rdx        # 余数 - 3，先直接区分 2、3
+	jl Tail2
+	je Tail3
+	iaddq $-2, %rdx        # 余数 - 5，区分 4、5
+	jl Tail4
+	je Tail5
+	iaddq $-1, %rdx        # 余数 - 6，区分 6、7
+	je Tail6
+
+	# 未匹配 2～6 时一定剩 7 个，直接顺序进入 Tail7
+	# 从选中的标签开始向下连续执行：Tail7 → Tail6 → … → Tail1
+	# src、dst 保持不动，通过固定偏移访问；不再更新指针或循环计数
+Tail7:
+	mrmovq 48(%rdi), %r10  # 读取剩余块的第 7 个元素
+	rmmovq %r10, 48(%rsi)  # 复制；相邻加载/存储由新转发路径支持
+	andq %r10, %r10        # 判断当前值是否为正
+	jle Tail6               # 非正数跳过计数，进入下一个元素
+	iaddq $1, %rax         # 正数计数加 1，然后顺序进入下一标签
+Tail6:
+	mrmovq 40(%rdi), %r10  # 读取剩余块的第 6 个元素
+	rmmovq %r10, 40(%rsi)  # 复制；相邻加载/存储由新转发路径支持
+	andq %r10, %r10        # 判断当前值是否为正
+	jle Tail5               # 非正数跳过计数，进入下一个元素
+	iaddq $1, %rax         # 正数计数加 1，然后顺序进入下一标签
+Tail5:
+	mrmovq 32(%rdi), %r10  # 读取剩余块的第 5 个元素
+	rmmovq %r10, 32(%rsi)  # 复制；相邻加载/存储由新转发路径支持
+	andq %r10, %r10        # 判断当前值是否为正
+	jle Tail4               # 非正数跳过计数，进入下一个元素
+	iaddq $1, %rax         # 正数计数加 1，然后顺序进入下一标签
+Tail4:
+	mrmovq 24(%rdi), %r10  # 读取剩余块的第 4 个元素
+	rmmovq %r10, 24(%rsi)  # 复制；相邻加载/存储由新转发路径支持
+	andq %r10, %r10        # 判断当前值是否为正
+	jle Tail3               # 非正数跳过计数，进入下一个元素
+	iaddq $1, %rax         # 正数计数加 1，然后顺序进入下一标签
+Tail3:
+	mrmovq 16(%rdi), %r10  # 读取剩余块的第 3 个元素
+	rmmovq %r10, 16(%rsi)  # 复制；相邻加载/存储由新转发路径支持
+	andq %r10, %r10        # 判断当前值是否为正
+	jle Tail2               # 非正数跳过计数，进入下一个元素
+	iaddq $1, %rax         # 正数计数加 1，然后顺序进入下一标签
+Tail2:
+	mrmovq 8(%rdi), %r10  # 读取剩余块的第 2 个元素
+	rmmovq %r10, 8(%rsi)  # 复制；相邻加载/存储由新转发路径支持
+	andq %r10, %r10        # 判断当前值是否为正
+	jle Tail1               # 非正数跳过计数，进入下一个元素
+	iaddq $1, %rax         # 正数计数加 1，然后顺序进入下一标签
+Tail1:
+	mrmovq (%rdi), %r10  # 读取剩余块的第 1 个元素
+	rmmovq %r10, (%rsi)  # 复制；相邻加载/存储由新转发路径支持
+	andq %r10, %r10        # 判断当前值是否为正
+	jle Done               # 非正数跳过计数，进入下一个元素
+	iaddq $1, %rax         # 正数计数加 1，然后顺序进入下一标签
 
 ##################################################################
 # Do not modify the following section of code
