@@ -92,3 +92,12 @@ __pycache__/
 /archlab-handout/sim/pipe/sdriver.ys
 /archlab-handout/sim/pipe/ldriver.ys
 /archlab-handout/sim/pipe/driver*.ys
+
+# Cache Lab：保留原始测试工具，忽略本地构建与测试产物
+!/cachelab/test-csim
+/cachelab/tracegen
+/cachelab/*-handin.tar
+/cachelab/.csim_results
+/cachelab/.marker
+/cachelab/trace.all
+/cachelab/trace.f*
