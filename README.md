@@ -118,3 +118,48 @@ PASS: Would have posted the following:
 `-q` 表示仅在本地验证，不向课程服务器提交。输出中的 level 是目标程序内部的验证等级，因此 Phase 4、Phase 5 分别显示 `rtarget` 的 level 2、level 3。
 
 详细的栈布局、注入代码、ROP 链与调试过程见 [Attack Lab 实验记录](attacklab/readme.md)，各阶段输入保存在 `attacklab/phase1.txt`～`attacklab/phase5.txt`，反汇编记录位于 `attacklab/ctarget_disassembly.txt` 和 `attacklab/rtarget_disassembly.txt`。
+
+## Lab 4 — Architecture Lab: Optimizing the Performance of a Pipelined Processor
+
+### 实验结果
+
+以下结果整理自 [Architecture Lab 实验记录](archlab-handout/readme.md)。
+
+| 部分 | 实现内容 | 验证结果 |
+| --- | --- | --- |
+| Part A | Y86-64 迭代求和 `sum.ys`、递归求和 `rsum.ys`、复制与异或校验 `copy.ys` | 三个程序均正常停止；本次输入的返回值均为 `0xcba`，复制结果正确 |
+| Part B | 在 `seq-full.hcl` 中实现 `iaddq` | `asumi.ys` 验证成功，16 个示例全部通过，含 `iaddq` 的 932 项 ISA 检查全部通过 |
+| Part C | 优化 `ncopy.ys` 与 `pipe-full.hcl` | YIS 和 PIPE 正确性测试均为 68/68，平均 CPE 为 **7.61**，性能得分 **57.8/60.0** |
+
+Part C 采用八路循环展开、`iaddq`、加载到存储转发、BTFNT 分支预测，以及按余数定位的连续尾部处理。主要性能变化如下：
+
+| 优化阶段 | Average CPE | 性能得分 |
+| --- | ---: | ---: |
+| 初次指令重排 | 14.03 | 0.0/60.0 |
+| 二路展开并外提常数 | 10.01 | 9.8/60.0 |
+| 八路展开 | 8.83 | 33.4/60.0 |
+| PIPE 支持并使用 `iaddq` | 8.54 | 39.2/60.0 |
+| 连续尾部处理 | 7.81 | 53.8/60.0 |
+| BTFNT 分支预测 | 7.71 | 55.8/60.0 |
+| 最终尾部定位优化 | **7.61** | **57.8/60.0** |
+
+最终版本在 `archlab-handout/sim/pipe` 中的验证命令及关键输出：
+
+```text
+$ ./correctness.pl -q -f ncopy.ys
+Simulating with instruction set simulator yis
+68/68 pass correctness test
+
+$ ./correctness.pl -q -p -f ncopy.ys
+Simulating with pipeline simulator psim
+68/68 pass correctness test
+
+$ ./benchmark.pl -f ncopy.ys
+64      403     6.30
+Average CPE     7.61
+Score   57.8/60.0
+```
+
+其中 `64 403 6.30` 表示长度为 64 时耗费 403 个周期，CPE 为 6.30；平均 CPE 7.61 是长度 1～64 各自 CPE 的算术平均。57.8/60.0 为 Part C 性能得分。
+
+源码位于 `archlab-handout/sim/misc/{sum,rsum,copy}.ys`、`archlab-handout/sim/seq/seq-full.hcl`、`archlab-handout/sim/pipe/{ncopy.ys,pipe-full.hcl}`；完整测试记录和优化过程见 [详细笔记](archlab-handout/readme.md)。
