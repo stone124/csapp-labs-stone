@@ -163,3 +163,44 @@ Score   57.8/60.0
 其中 `64 403 6.30` 表示长度为 64 时耗费 403 个周期，CPE 为 6.30；平均 CPE 7.61 是长度 1～64 各自 CPE 的算术平均。57.8/60.0 为 Part C 性能得分。
 
 源码位于 `archlab-handout/sim/misc/{sum,rsum,copy}.ys`、`archlab-handout/sim/seq/seq-full.hcl`、`archlab-handout/sim/pipe/{ncopy.ys,pipe-full.hcl}`；完整测试记录和优化过程见 [详细笔记](archlab-handout/readme.md)。
+
+## Lab 5 — Cache Lab: Understanding Cache Memories
+
+### 实验结果
+
+Part A 的缓存模拟器使用 LRU 替换策略，已有测试记录为 **27/27**；Part B 的矩阵转置在本次三种尺寸测试中均正确，miss 数全部达到满分要求，对应性能得分 **26/26**。
+
+| 部分 | 实现内容 | 验证结果 |
+| --- | --- | --- |
+| Part A | 在 `csim.c` 中解析访存记录，模拟缓存命中、未命中、驱逐和 LRU 替换 | 各项统计与参考模拟器一致，27/27 |
+| Part B：32 × 32 | 8 × 8 分块，先把一行的 8 个元素读入临时变量，再写 B | correctness=1，288 miss，8/8 |
+| Part B：64 × 64 | 8 × 8 块内分成四个区域，借用 B 暂存，分三个阶段完成转置 | correctness=1，1228 miss，8/8 |
+| Part B：61 × 67 | 16 × 16 分块，检查矩阵边界 | correctness=1，1993 miss，10/10 |
+
+Part B 的测试缓存参数为 `s=5, E=1, b=5`，即 32 个组、每组一条缓存行、每块 32 字节，总数据容量为 1 KiB。三种尺寸的满分要求分别是 miss 不超过 **300、1300、2000**。
+
+在 `cachelab` 目录编译并测试，本次提交函数的关键输出如下：
+
+```text
+$ make
+$ ./test-trans -M 32 -N 32
+Summary for official submission (func 0): correctness=1 misses=288
+TEST_TRANS_RESULTS=1:288
+
+$ ./test-trans -M 64 -N 64
+Summary for official submission (func 0): correctness=1 misses=1228
+TEST_TRANS_RESULTS=1:1228
+
+$ ./test-trans -M 61 -N 67
+Summary for official submission (func 0): correctness=1 misses=1993
+TEST_TRANS_RESULTS=1:1993
+```
+
+### 优化思路
+
+- **先分块，缩小搬运范围。** 尽快用完当前小块涉及的内存块，减少处理下一行时重新加载 B 的次数。
+- **先读满，再写出。** 用 8 个临时变量保存 A 当前行的元素，写 B 时即使驱逐了这个 A 块，也不用回头读取。
+- **按缓存映射安排写入顺序。** 64 × 64 中，B 相隔 4 行的块会映射到同一组。先完成上方行，再写下方对应行，避免反复互相驱逐。
+- **根据尺寸选择策略。** 61 × 67 的行首不总与内存块边界对齐，采用带边界检查的 16 × 16 分块，并通过实测选择大小。
+
+源码见 [缓存模拟器](cachelab/csim.c) 和 [矩阵转置](cachelab/trans.c)；地址位划分、逐次 hit/miss 分析、三阶段搬运及完整实验数据见 [Cache Lab 详细笔记](cachelab/readme.md)。
