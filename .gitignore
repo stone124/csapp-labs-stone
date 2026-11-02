@@ -37,6 +37,10 @@ test-trans
 mdriver
 sdriver
 tsh
+myspin
+mysplit
+mystop
+myint
 tiny
 proxy
 
@@ -101,3 +105,6 @@ __pycache__/
 /cachelab/.marker
 /cachelab/trace.all
 /cachelab/trace.f*
+
+# Shell Lab：保留参考程序与参考输出，忽略本地运行产物
+!/shelllab/tshref.out
