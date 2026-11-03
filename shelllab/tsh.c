@@ -335,8 +335,13 @@ void sigchld_handler(int sig)
     int olderrno = errno;
     int status;
     int pid;
-    while((pid = waitpid(-1, &status, WNOHANG)) > 0){
-        deletejob(jobs, pid);
+    while((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0){
+        if(WIFSTOPPED(status)){
+            struct job_t *job = getjobpid(jobs, pid);
+            job->state = ST;
+        }else if(WIFEXITED(status) || WIFSIGNALED(status)){
+            deletejob(jobs, pid);
+        }
     }
 
     errno = olderrno;
@@ -356,6 +361,7 @@ void sigint_handler(int sig)
     if(pid){
         // 看似kill，实则发送信号
         kill(-pid, SIGINT);
+        printf("Job [%d] (%d) terminated by signal 2\n", pid2jid(pid), pid);
     }
     errno = olderrno;
     return;
@@ -368,6 +374,15 @@ void sigint_handler(int sig)
  */
 void sigtstp_handler(int sig)
 {
+    int olderrno = errno;
+    pid_t pid = fgpid(jobs); // 0代表没有前台进程
+
+    if(pid){
+        // 看似kill，实则发送信号
+        kill(-pid, SIGTSTP);
+        printf("Job [%d] (%d) stoped by signal 20\n", pid2jid(pid), pid);
+    }
+    errno = olderrno;
     return;
 }
 
