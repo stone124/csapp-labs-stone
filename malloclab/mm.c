@@ -36,7 +36,7 @@ team_t team = {
     ""
 };
 
-/* 初始指向Epilogue header（末尾头）的第一个字节，正常状态下指向payload的第一个字节*/
+/* 初始指向的prologue footer第一个字节，因为payload大小为0，正常状态下指向payload的第一个字节*/
 static char *heap_lisp;
 
 /* ==================== 常量宏 ==================== */
@@ -64,10 +64,10 @@ static char *heap_lisp;
 /* 获取一个字的val*/
 #define GET(p) (*(uint32_t *)(p)) 
 
-/* 指针指向payload的首字节，获取前面的header指针*/
+/* 指针指向payload的首字节，获取当前块header指针*/
 #define HDRP(bp) ((char *)(bp) - W_SIZE)
 
-/* 指针指向payload的首字节，获取后面的foot指针*/
+/* 指针指向payload的首字节，获取当前块foot指针*/
 #define FTRP(bp) ((char *)(bp) + GET_SIZE(HDRP(bp)) - D_SIZE)
 
 /* 获取头部的size大小，和分配情况 */
@@ -78,11 +78,8 @@ static char *heap_lisp;
 #define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(HDRP(bp)))
 #define PREV_BLKP(bp) ((char *)(bp) - GET_SIZE((char *)(bp) - D_SIZE))
 
-
-/* ==================== 函数声明 ==================== */
-static void *coalesce(void *bp);
-static void *extend_heap(size_t words);
-
+/* 取最大值，不要传入i++等类似的形式*/
+#define MAX(a, b) ((a) > (b)? (a):(b))
 
 /**
  * 将块总大小（字节数，包含头尾）和分配状态打包到一个字中。
@@ -91,6 +88,17 @@ static void *extend_heap(size_t words);
  * 1 表示已分配，0 表示空闲。
  */
 #define PACK(size, alloc) ((size) | (alloc))
+
+/* ==================== 函数声明 ==================== */
+
+/* 对空闲块进行合并 */
+static void *coalesce(void *bp);
+/* 拓展堆words个字（word数），保持对齐；返回合并后空闲块的 payload 指针，失败返回 NULL */
+static void *extend_heap(size_t words);
+/* 按照顺序找到足够大小的块*/
+static void *findfit(size_t size);
+/* 将足够大小的块进行分割，最小为2*D_SIZE（header + footer + payload(对齐最小为D_SIZE)）*/
+static void place(void *bp, size_t size);
 
 /* 
  * mm_init - initialize the malloc package.
@@ -108,6 +116,8 @@ int mm_init(void)
     PUT(heap_lisp + 2*W_SIZE, PACK(D_SIZE, 1));
     PUT(heap_lisp + 3*W_SIZE , PACK(W_SIZE, 1));
 
+    heap_lisp += (2 * W_SIZE);
+
     // 3 给栈一个初始化空间
     if(extend_heap(CHUNK_SIZE/W_SIZE) == NULL)
         return -1;
@@ -118,28 +128,58 @@ int mm_init(void)
 /* 
  * mm_malloc - Allocate a block by incrementing the brk pointer.
  *     Always allocate a block whose size is a multiple of the alignment.
+ * 
+ * 这里的size是payload的大小
  */
 void *mm_malloc(size_t size)
 {
-    int newsize = ALIGN(size + SIZE_T_SIZE);
-    void *p = mem_sbrk(newsize);
-    if (p == (void *)-1)
-	return NULL;
-    else {
-        *(size_t *)p = size;
-        return (void *)((char *)p + SIZE_T_SIZE);
+    size_t all_size;
+    size_t extend_size; // 如果说不满足，需要拓展的大小
+    char *bp;
+
+    // 1 将size进行字节数对齐，并且保留header和footer的size
+    if(size == 0){
+        return NULL;
     }
+    if(size < D_SIZE){
+        all_size = 2*D_SIZE; // header+footer+对齐
+    }else{
+        all_size = D_SIZE + ALIGN(size);
+    }
+
+    // 2 使用某个策略找到合适的空闲片
+    if((bp = findfit(all_size)) != NULL){
+        place(bp, all_size); // 分割块
+        return bp;
+    }
+
+    // 3 没有合适的块，扩展堆
+    extend_size = MAX(CHUNK_SIZE, all_size);
+    if((bp = extend_heap(extend_size/W_SIZE)) == NULL)
+        return NULL;
+
+    place(bp, all_size); // 分割块
+    return bp;
 }
 
-/*
+/** 
  * mm_free - Freeing a block does nothing.
+ * 标记为未分配并前后合并
  */
 void mm_free(void *ptr)
 {
+    // 1 将头尾标记为未分配
+    size_t asize = GET_SIZE(HDRP(ptr));
+    PUT(HDRP(ptr), PACK(asize, 0));
+    PUT(FTRP(ptr), PACK(asize, 0));
+
+    // 2 合并
+    coalesce(ptr);
 }
 
-/*
+/**
  * mm_realloc - Implemented simply in terms of mm_malloc and mm_free
+ * 把 ptr 指向的已分配空间调整为 size 字节，返回调整后的指针。这里 size 是用户数据大小，不包含头尾
  */
 void *mm_realloc(void *ptr, size_t size)
 {
@@ -177,22 +217,84 @@ static void *extend_heap(size_t words)
     PUT(FTRP(bp), pack_temp);
     PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1)); // Epilogue head
 
-
     // 3 合并
     return coalesce(bp); // 这里其实只可能合并前项，mem_sbrk是末尾扩
 }
 
-/* 输入payload指针进行合并 */
-static void *coalesce(void *bp){
-    // TODO
+/* 对空闲块进行合并 */
+static void *coalesce(void *bp)
+{
+    // 1 获取前后块的信息
+    char *front_bp = PREV_BLKP(bp);
+    char *back_bp = NEXT_BLKP(bp);
+    size_t front_size = GET_SIZE(HDRP(front_bp));
+    size_t back_size = GET_SIZE(HDRP(back_bp));
+    size_t front_alloc = GET_ALLOC(HDRP(front_bp));
+    size_t back_alloc = GET_ALLOC(HDRP(back_bp));
+
+    // 2 case1：前面块和后面块都被分配，啥都不用干
+    if(front_alloc && back_alloc){
+        return bp;
+    }else if(!front_alloc && back_alloc){
+    // 3 case2：前面块空闲，后面块分配
+        size_t size = front_size + GET_SIZE(HDRP(bp));
+        PUT(HDRP(front_bp), PACK(size, 0));
+        PUT(FTRP(front_bp), PACK(size, 0)); // FTRP是由HDRP计算出来的，可以直接用front_bp
+        bp = front_bp;
+    }else if(front_alloc && !back_alloc){
+    // 4 case3：前面块分配，后面块空闲
+        size_t size = back_size + GET_SIZE(HDRP(bp));
+        PUT(HDRP(bp), PACK(size, 0));
+        PUT(FTRP(bp), PACK(size, 0));
+    }else{
+    // 5 case4：前后块都空闲
+        size_t size = back_size + front_size + GET_SIZE(HDRP(bp));
+        PUT(HDRP(front_bp), PACK(size, 0));
+        PUT(FTRP(front_bp), PACK(size, 0)); // FTRP是由HDRP计算出来的，可以直接用front_bp
+        bp = front_bp;
+    }
+    
     return bp; 
 }
 
+/* 按照顺序找到足够大小的块*/
+static void *findfit(size_t size)
+{
+    // 这里直接按照顺序查从heap_lisp开始找到第一个
+    char *bp;
+
+    for ( bp = heap_lisp; GET_SIZE(HDRP(bp)) > 0; bp = NEXT_BLKP(bp))
+    {
+        if(!GET_ALLOC(HDRP(bp)) && (size <= GET_SIZE(HDRP(bp)))){
+            return bp;
+        }
+    }
+    
+    return NULL;
+}
 
 
-
-
-
+/* 将足够大小的块进行分割，最小为2*D_SIZE（header + footer + payload(对齐最小为D_SIZE)）*/
+static void place(void *bp, size_t size)
+{
+    // 1 判断当前块大小
+    size_t b_size = GET_SIZE(HDRP(bp));
+    
+    // 2 差值大于等于 2*D_SIZE可分割
+    if((b_size - size) >= (2*D_SIZE)){
+        size_t remaining_size = b_size - size;
+        // 更改当前块header、footer
+        PUT(HDRP(bp), PACK(size, 1));
+        PUT(FTRP(bp), PACK(size, 1));
+        // 更改下块header、footer
+        PUT(HDRP(NEXT_BLKP(bp)), PACK(remaining_size, 0));
+        PUT(FTRP(NEXT_BLKP(bp)), PACK(remaining_size, 0));
+    }else{
+    // 3 反之不可分割
+        PUT(HDRP(bp), PACK(b_size, 1));
+        PUT(FTRP(bp), PACK(b_size, 1));     
+    }
+}
 
 
 
