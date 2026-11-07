@@ -224,3 +224,34 @@ TEST_TRANS_RESULTS=1:1993
 比较时允许 PID 不同；trace11～13 中的 `/bin/ps a` 输出按本轮 `mysplit` 进程的运行状态核对。其余输出与参考程序一致，各测试驱动均正常结束。
 
 源码见 [tsh.c](shelllab/tsh.c)；验证环境、全部 16 条测试及参考程序的命令行输出见 [Shell Lab 完整实验记录](shelllab/readme.md)。
+
+## Lab 7 — Malloc Lab: Writing a Dynamic Storage Allocator
+
+### 实验结果
+
+当前采用隐式空闲链表、首次适配查找、块拆分及相邻空闲块立即合并，并支持 `realloc` 调整大小与数据搬运。根据本次本地运行记录，**两个 short 测试和全部 11 个完整 trace 均通过正确性检查**；完整测试性能得分为 **67/100**。
+
+| 测试集             | 正确性结果 | 空间利用率 | 吞吐量     | 性能得分 |
+| ------------------ | ---------- | ---------- | ---------- | -------- |
+| `short1-bal.rep` | 通过       | 66%        | 60000 Kops | 80/100   |
+| `short2-bal.rep` | 通过       | 89%        | 60000 Kops | 94/100   |
+| 完整 11 个 trace   | 11/11 通过 | 77%        | 316 Kops   | 67/100   |
+
+在 `malloclab` 目录编译并运行，完整测试的汇总输出如下：
+
+```text
+$ make
+$ ./mdriver -v -f short1-bal.rep
+$ ./mdriver -v -f short2-bal.rep
+$ ./mdriver -v -t ./traces/
+
+Results for mm malloc:
+trace  valid  util     ops      secs  Kops
+Total          77%  112372  0.355998   316
+
+Perf index = 46 (util) + 21 (thru) = 67/100
+```
+
+完整测试共执行 112372 次操作。当前主要耗时集中在 `binary-bal.rep`、`binary2-bal.rep`，吞吐量分别约为 160、100 Kops；隐式链表首次适配的反复扫描是后续优化方向。short 测试各只有 12 次操作，计时较短，性能比较以完整测试为主；吞吐量随机器和运行环境变化。
+
+源码见 [mm.c](malloclab/mm.c)；块布局、初始化、扩堆、分配与释放、`realloc` 处理及待完善项见 [Malloc Lab 实验记录](malloclab/readme.md)。

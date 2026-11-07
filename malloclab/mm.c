@@ -183,19 +183,85 @@ void mm_free(void *ptr)
  */
 void *mm_realloc(void *ptr, size_t size)
 {
-    void *oldptr = ptr;
-    void *newptr;
-    size_t copySize;
-    
-    newptr = mm_malloc(size);
-    if (newptr == NULL)
-      return NULL;
-    copySize = *(size_t *)((char *)oldptr - SIZE_T_SIZE);
-    if (size < copySize)
-      copySize = size;
-    memcpy(newptr, oldptr, copySize);
-    mm_free(oldptr);
-    return newptr;
+    // 1.1 特殊情况ptr为NULL，等价于malloc。
+    if(ptr == NULL){
+        return mm_malloc(size);
+    }
+
+    // 1.2 size=0，释放旧块并返回NULL
+    if(size == 0){
+        mm_free(ptr);
+        return NULL;
+    }
+
+    char *bp;
+    size_t all_size;
+    size_t origin_asize = GET_SIZE(HDRP(ptr));
+    size_t extend_size; // 如果说不满足，需要拓展的大小
+    char *header = HDRP(ptr);
+    char *foot = FTRP(ptr);
+
+    /* 复制量不超过旧块的数据容量，也不超过新的请求大小 */
+    size_t copy_size = origin_asize - D_SIZE;
+    if(size < copy_size){
+        copy_size = size;
+    }
+
+    if(size < D_SIZE){
+        all_size = 2*D_SIZE; // header+footer+对齐
+    }else{
+        all_size = D_SIZE + ALIGN(size);
+    }
+
+    // 2 当前块够大进行拆分，原地址不变，无需复制
+    if(origin_asize >= all_size){
+        place(ptr, all_size);
+        /* 拆分出的空闲块可能与后面的空闲块相邻 */
+        if(origin_asize - all_size >= 2 * D_SIZE){
+            coalesce(NEXT_BLKP(ptr));
+        }
+        return ptr;
+    }
+
+    // 3 左右两边找空闲扩容
+    char *left_bp = PREV_BLKP(ptr);
+    char *right_bp = NEXT_BLKP(ptr);
+
+    /* 只有空闲邻块的空间可用于扩容，已分配块的可用空间为 0 */
+    size_t left_available = GET_ALLOC(HDRP(left_bp))
+                          ? 0 : GET_SIZE(HDRP(left_bp));
+    size_t right_available = GET_ALLOC(HDRP(right_bp))
+                           ? 0 : GET_SIZE(HDRP(right_bp));
+
+    if(origin_asize + left_available + right_available >= all_size){
+        PUT(header, PACK(origin_asize, 0));
+        PUT(foot, PACK(origin_asize, 0));
+        bp = coalesce(ptr);
+        /* 向前合并可能重叠，先搬数据，再拆分，避免新头尾覆盖旧数据 */
+        if(bp != ptr){
+            memmove(bp, ptr, copy_size);
+        }
+        place(bp, all_size);
+        return bp;
+    }
+
+    // 4 从heap_lisp开始寻找合适大小的块
+    if((bp = findfit(all_size)) != NULL){
+        place(bp, all_size);
+        memcpy(bp, ptr, copy_size);
+        mm_free(ptr); // 复制成功后才释放旧块，并合并相邻空闲块
+        return bp;
+    }
+
+    // 5 extend堆，失败时旧块仍然保持有效
+    extend_size = MAX(CHUNK_SIZE, all_size);
+    if((bp = extend_heap(extend_size/W_SIZE)) == NULL){
+        return NULL;
+    }
+    place(bp, all_size);
+    memcpy(bp, ptr, copy_size);
+    mm_free(ptr);
+    return bp;
 }
 
 /* 拓展堆words个字（word数），保持对齐；返回合并后空闲块的 payload 指针，失败返回 NULL */
