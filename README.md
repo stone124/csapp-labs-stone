@@ -1,4 +1,4 @@
-# 2026秋季CSAPP实验记录
+# CSAPP实验记录
 
 ## Lab 1 — Data Lab: Manipulating Bits
 
@@ -255,3 +255,91 @@ Perf index = 46 (util) + 21 (thru) = 67/100
 完整测试共执行 112372 次操作。当前主要耗时集中在 `binary-bal.rep`、`binary2-bal.rep`，吞吐量分别约为 160、100 Kops；隐式链表首次适配的反复扫描是后续优化方向。short 测试各只有 12 次操作，计时较短，性能比较以完整测试为主；吞吐量随机器和运行环境变化。
 
 源码见 [mm.c](malloclab/mm.c)；块布局、初始化、扩堆、分配与释放、`realloc` 处理及待完善项见 [Malloc Lab 实验记录](malloclab/readme.md)。
+
+## Lab 8 — Proxy Lab: Writing a Caching Web Proxy
+
+### 实验结果
+
+已完成顺序代理、多线程并发和内存缓存，官方 `driver.sh` 最终测试为 **70/70**。
+
+| 阶段             | Basic | Concurrency | Cache | 总分            |
+| ---------------- | ----- | ----------- | ----- | --------------- |
+| Part 1：顺序代理 | 40/40 | 0/15        | 0/15  | 40/70           |
+| Part 2：并发代理 | 40/40 | 15/15       | 0/15  | 55/70           |
+| Part 3：缓存代理 | 40/40 | 15/15       | 15/15 | **70/70** |
+
+每个连接由独立的 detached 线程处理；缓存采用链表、近似 LRU 淘汰和信号量实现的读者—写者同步，允许多个线程同时读取。
+
+在仓库根目录执行：
+
+```bash
+cd proxylab
+make
+make -C tiny
+NO_PROXY= no_proxy= ./driver.sh
+```
+
+清空 `NO_PROXY` 是为了确保本地请求经过代理。官方脚本做了执行权限、`ss` 端口检测和 Python 3 的环境适配，评分逻辑未改动。
+
+最终一次官方测试的真实输出如下：
+
+```text
+*** Basic ***
+Starting tiny on 24725
+Starting proxy on 9551
+1: home.html
+   Fetching ./tiny/home.html into ./.proxy using the proxy
+   Fetching ./tiny/home.html into ./.noproxy directly from Tiny
+   Comparing the two files
+   Success: Files are identical.
+2: csapp.c
+   Fetching ./tiny/csapp.c into ./.proxy using the proxy
+   Fetching ./tiny/csapp.c into ./.noproxy directly from Tiny
+   Comparing the two files
+   Success: Files are identical.
+3: tiny.c
+   Fetching ./tiny/tiny.c into ./.proxy using the proxy
+   Fetching ./tiny/tiny.c into ./.noproxy directly from Tiny
+   Comparing the two files
+   Success: Files are identical.
+4: godzilla.jpg
+   Fetching ./tiny/godzilla.jpg into ./.proxy using the proxy
+   Fetching ./tiny/godzilla.jpg into ./.noproxy directly from Tiny
+   Comparing the two files
+   Success: Files are identical.
+5: tiny
+   Fetching ./tiny/tiny into ./.proxy using the proxy
+   Fetching ./tiny/tiny into ./.noproxy directly from Tiny
+   Comparing the two files
+   Success: Files are identical.
+Killing tiny and proxy
+basicScore: 40/40
+
+*** Concurrency ***
+Starting tiny on port 30793
+Starting proxy on port 18292
+Starting the blocking NOP server on port 9481
+Trying to fetch a file from the blocking nop-server
+Fetching ./tiny/home.html into ./.noproxy directly from Tiny
+Fetching ./tiny/home.html into ./.proxy using the proxy
+Checking whether the proxy fetch succeeded
+Success: Was able to fetch tiny/home.html from the proxy.
+Killing tiny, proxy, and nop-server
+concurrencyScore: 15/15
+
+*** Cache ***
+Starting tiny on port 22191
+Starting proxy on port 26042
+Fetching ./tiny/tiny.c into ./.proxy using the proxy
+Fetching ./tiny/home.html into ./.proxy using the proxy
+Fetching ./tiny/csapp.c into ./.proxy using the proxy
+Killing tiny
+Fetching a cached copy of ./tiny/home.html into ./.noproxy
+Success: Was able to fetch tiny/home.html from the cache.
+Killing proxy
+cacheScore: 15/15
+
+totalScore: 70/70
+```
+
+源码见 [proxy.c](proxylab/proxy.c)、[cache.c](proxylab/cache.c) 和 [cache.h](proxylab/cache.h)；函数结构图及各阶段完整测试输出见 [Proxy Lab 实验记录](proxylab/README.md)。
